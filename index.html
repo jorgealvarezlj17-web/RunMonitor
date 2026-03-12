@@ -3,206 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Master</title>
+    <title>RunMonitor Master Edition</title>
     
-    <!-- Librerías con carga ultra-rápida -->
+    <!-- Librerías de Alto Rendimiento -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
         body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #f8fafc; overflow-x: hidden; }
-        .glass { background: rgba(22, 26, 35, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .drawer { background: rgba(255, 255, 255, 0.03); border-radius: 28px; padding: 15px; border: 1px dashed rgba(255,255,255,0.1); }
+        
+        /* Diseño Industrial Glassmorphism */
+        .glass { background: rgba(22, 26, 35, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        .status-led { width: 10px; height: 10px; border-radius: 50%; }
-        .led-on { background: #10b981; box-shadow: 0 0 12px #10b981; }
-        .led-off { background: #334155; }
-        input { background: #161a23 !important; border: 1px solid #1e293b !important; outline: none; color: white; }
+        
+        /* Inputs Estilo Lovable */
+        input { background: #161a23 !important; border: 1px solid #1e293b !important; outline: none; color: white; transition: 0.3s; }
+        input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1); }
+        
+        /* Animaciones */
+        .fade-in { animation: fadeIn 0.5s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-    <!-- 1. PANTALLA DE CARGA (Con Seguro de Vida de 2 segundos) -->
-    <div id="pantalla-carga" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
-        <div class="p-4 bg-blue-600 rounded-3xl animate-bounce mb-4 shadow-2xl shadow-blue-500/20">
-            <i data-lucide="bolt" class="text-white w-10 h-10"></i>
+    <!-- 1. PANTALLA DE CARGA (PROTEGIDA) -->
+    <div id="p-loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
+        <div class="p-5 bg-blue-600 rounded-[2rem] animate-bounce shadow-2xl shadow-blue-500/20">
+            <i data-lucide="bolt" class="text-white w-12 h-12"></i>
         </div>
-        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sincronizando...</p>
+        <p class="mt-6 text-slate-500 font-bold tracking-[0.3em] text-[10px] uppercase">Sincronizando Nube</p>
     </div>
 
-    <!-- 2. LOGIN / REGISTRO (Diseño Industrial) -->
+    <!-- 2. SECCIÓN DE AUTENTICACIÓN (DISEÑO BASE PROTEGIDO) -->
     <div id="scr-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
-        <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white">Run<span class="text-blue-500">Monitor</span></h1>
-        <p class="text-slate-500 mb-8 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
-        
-        <div class="glass p-8 rounded-[40px] w-full max-w-sm space-y-4 text-left shadow-2xl">
-            <div id="div-empresa" class="hidden">
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de tu Empresa</label>
-                <input type="text" id="reg-empresa" class="w-full p-4 rounded-2xl" placeholder="Ej: Camaronera Mar">
-            </div>
-            <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Correo</label>
-                <input type="email" id="email" class="w-full p-4 rounded-2xl" placeholder="tu@correo.com">
-            </div>
-            <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
-                <div class="relative">
-                    <input type="password" id="pass" class="w-full p-4 rounded-2xl">
-                    <button onclick="togglePassword()" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600">
-                        <i data-lucide="eye" id="ojo" class="w-5 h-5"></i>
-                    </button>
+        <div class="w-full max-w-sm fade-in">
+            <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white italic">Run<span class="text-blue-500">Monitor</span></h1>
+            <p id="auth-tag" class="text-slate-600 mb-10 text-[10px] font-bold uppercase tracking-[0.2em]">Sistemas de Control</p>
+
+            <div class="glass p-8 rounded-[45px] space-y-5 text-left shadow-2xl border border-white/5">
+                
+                <!-- Campo Empresa (Solo para Registro) -->
+                <div id="group-empresa" class="hidden">
+                    <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block tracking-widest">Nombre de Empresa</label>
+                    <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl text-sm" placeholder="Ej: Camaronera Master">
                 </div>
-            </div>
-            <button onclick="handleAuth()" id="btn-auth" class="w-full bg-blue-600 py-5 rounded-2xl font-black text-xs uppercase tracking-widest">Entrar</button>
-            <div class="text-center pt-2 space-y-3">
-                <p onclick="cambiarModo('reg')" id="txt-reg" class="text-xs text-blue-400 font-bold cursor-pointer">¿Nueva Empresa? Regístrate</p>
-                <p onclick="cambiarModo('forgot')" id="txt-forgot" class="text-[10px] text-slate-600 font-bold cursor-pointer uppercase">Olvidé mi contraseña</p>
-                <p onclick="location.reload()" id="txt-back" class="hidden text-xs text-slate-400 underline cursor-pointer pt-4 block">Volver al Inicio</p>
-            </div>
-        </div>
-    </div>
 
-    <!-- 3. PANTALLA JORGE (SUPER ADMIN) -->
-    <div id="scr-super" class="hidden min-h-screen flex flex-col">
-        <header class="p-6 glass flex justify-between items-center sticky top-0 z-50">
-            <h2 class="font-black text-blue-500 text-xs tracking-[0.3em] uppercase">Control Maestro (Jorge)</h2>
-            <button onclick="logout()" class="text-red-500"><i data-lucide="power"></i></button>
-        </header>
-        <main id="super-content" class="p-6 space-y-4">
-            <!-- Verás todas las empresas aquí -->
-        </main>
-    </div>
-
-    <!-- 4. PANTALLA DASHBOARD (ADMIN / OPERADOR) -->
-    <div id="scr-dash" class="hidden min-h-screen flex flex-col">
-        <header class="p-6 glass flex justify-between items-center sticky top-0 z-50">
-            <div>
-                <h2 id="disp-empresa" class="font-black text-white italic text-xl">Mi Empresa</h2>
-                <p id="disp-rol" class="text-[9px] text-blue-500 font-bold uppercase tracking-widest">Cargando...</p>
-            </div>
-            <button onclick="logout()" class="text-red-500"><i data-lucide="power"></i></button>
-        </header>
-        <main id="dash-content" class="p-6 space-y-6">
-            <!-- Equipos aquí -->
-        </main>
-    </div>
-
-    <script>
-        // CONFIGURACIÓN BLINDADA
-        var _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        var _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        var _supa = null;
-        var modoAuth = 'login';
-        var perfilLocal = null;
-
-        // --- SEGURO DE VIDA ---
-        setTimeout(function() {
-            var loader = document.getElementById('pantalla-carga');
-            if (loader && !loader.classList.contains('hidden')) {
-                loader.classList.add('hidden');
-                if(!perfilLocal) document.getElementById('scr-auth').classList.remove('hidden');
-            }
-        }, 2000);
-
-        window.onload = async function() {
-            lucide.createIcons();
-            try {
-                if (window.supabase) {
-                    _supa = window.supabase.createClient(_U, _K);
-                    const { data: { session } } = await _supa.auth.getSession();
-                    if (session) {
-                        cargarPerfil(session.user.id);
-                    } else {
-                        document.getElementById('pantalla-carga').classList.add('hidden');
-                        document.getElementById('scr-auth').classList.remove('hidden');
-                    }
-                }
-            } catch (e) {
-                console.error("Error al iniciar", e);
-                document.getElementById('pantalla-carga').classList.add('hidden');
-                document.getElementById('scr-auth').classList.remove('hidden');
-            }
-        };
-
-        async function cargarPerfil(uid) {
-            const { data } = await _supa.from('perfiles').select('*, empresas(*)').eq('id', uid).single();
-            if(!data) return logout();
-            perfilLocal = data;
-
-            document.getElementById('pantalla-carga').classList.add('hidden');
-            document.getElementById('scr-auth').classList.add('hidden');
-
-            if (data.rol === 'super_admin') {
-                document.getElementById('scr-super').classList.remove('hidden');
-                renderSuper();
-            } else {
-                document.getElementById('scr-dash').classList.remove('hidden');
-                document.getElementById('disp-empresa').innerText = data.empresas.nombre_empresa;
-                document.getElementById('disp-rol').innerText = data.rol;
-                renderEquipos();
-            }
-        }
-
-        async function handleAuth() {
-            var email = document.getElementById('email').value.trim();
-            var pass = document.getElementById('pass').value.trim();
-            var emp = document.getElementById('reg-empresa').value.trim();
-
-            if (!email || (modoAuth !== 'forgot' && !pass)) return alert("Llena los campos");
-
-            try {
-                if (modoAuth === 'reg') {
-                    if(!emp) throw new Error("Nombre de empresa obligatorio");
-                    const { data: nE } = await _supa.from('empresas').insert([{ nombre_empresa: emp }]).select().single();
-                    const { data: u } = await _supa.auth.signUp({ email, password: pass });
-                    await _supa.from('perfiles').insert([{ id: u.user.id, email, rol: 'admin', empresa_id: nE.id }]);
-                    alert("Empresa Creada. Inicia Sesión.");
-                    location.reload();
-                } else if (modoAuth === 'forgot') {
-                    await _supa.auth.resetPasswordForEmail(email);
-                    alert("Correo enviado.");
-                    location.reload();
-                } else {
-                    const { error } = await _supa.auth.signInWithPassword({ email, password: pass });
-                    if(error) throw error;
-                    location.reload();
-                }
-            } catch (e) { alert("Aviso: " + e.message); }
-        }
-
-        async function renderSuper() {
-            const { data } = await _supa.from('empresas').select('*, perfiles(count)');
-            document.getElementById('super-content').innerHTML = data.map(e => `
-                <div class="glass p-6 rounded-[32px] space-y-2">
-                    <h3 class="font-black text-blue-400 italic text-xl">${e.nombre_empresa}</h3>
-                    <p class="text-[10px] text-slate-500 uppercase font-bold tracking-widest">Empresa Activa</p>
+                <!-- Correo -->
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block tracking-widest">Correo Electrónico</label>
+                    <input type="email" id="val-email" class="w-full p-4 rounded-2xl text-sm" placeholder="tu@correo.com">
                 </div>
-            `).join('');
-        }
 
-        async function renderEquipos() {
-            const { data } = await _supa.from('equipos').select('*').eq('empresa_id', perfilLocal.empresa_id);
-            const cont = document.getElementById('dash-content');
-            if(!data || data.length === 0) {
-                cont.innerHTML = '<p class="text-center text-slate-700 py-20 font-bold uppercase text-[10px] tracking-widest">Sin equipos registrados</p>';
-            }
-        }
+                <!-- Contraseña con Ojo -->
+                <div id="group-pass">
+                    <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block tracking-widest">Contraseña</label>
+                    <div class="relative">
+                        <input type="password" id="val-pass" class="w-full p-4 rounded-2xl text-sm">
+                        <button onclick="toggleVisualizacionClave()" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600 hover:text-blue-500">
+                            <i data-lucide="eye" id="ojo-icon" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+                </div>
 
-        function toggleModo(m) {
-            modoAuth = m;
-            document.getElementById('div-empresa').className = (m === 'reg' ? '' : 'hidden');
-            document.getElementById('txt-back').classList.remove('hidden');
-        }
+                <!-- BOTÓN DE ACCIÓN -->
+                <button onclick="procesarAccion()" id="btn-master" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-white shadow-xl shadow-blue-600/20 uppercase tracking-widest text-[11px] transition-all active:scale-95">
+                    Iniciar Sesión
+                </button>
 
-        function togglePassword() {
-            var i = document.getElementById('pass');
-            i.type = (i.type === 'password' ? 'text' : 'password');
-            lucide.createIcons();
-        }
-
-        function logout() { _supa.auth.signOut(); location.reload(); }
-    </script>
-</body>
-</html>
+                <!-- AYUDAS Y MODOS -->
+                <div class="text-center pt-2 space-y-4">
+                    <p onclick="cambiarModo('registro')" id="btn-modo-reg" class="text-[11px] text-blue-400 font-black cursor-pointer hover:underline uppercase tracking-tighter">¿Registrar Empresa Nueva?</p>
+                    <p onclick="cambiarModo('olvido')" id="btn-modo-forgot" class="text-[9px] text-slate-600 cursor-pointer font-black uppercase tracking-widest hover:text-slate-400">Olvidé mi contraseña</p>
+                    <p onclick="window.location.reload()" id="btn-volver" class="hidden text-[11px] text-slate-400 font-black underline cursor-pointer uppercase tracking-widest">Volver al inicio</p>
+                </div>
