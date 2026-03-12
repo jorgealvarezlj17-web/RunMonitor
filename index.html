@@ -3,144 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro</title>
+    <title>RunMonitor | Owner Edition</title>
     
-    <!-- Librerías -->
+    <!-- Librerías Profesionales -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        body { background: #020617; color: #f8fafc; font-family: sans-serif; }
-        .glass { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f8fafc; overflow-x: hidden; }
+        .glass { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
         .hidden { display: none !important; }
+        input:focus { border-color: #3b82f6 !important; }
+        
+        /* Animación de carga */
+        .loader-ring { width: 48px; height: 48px; border: 5px solid #1e293b; border-bottom-color: #3b82f6; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg) } 100% { transform: rotate(360deg) } }
     </style>
 </head>
 <body>
 
-    <!-- PANTALLA DE CARGA -->
-    <div id="pantalla-carga" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center">
-        <div class="bg-blue-600 p-4 rounded-2xl animate-bounce mb-4">
-            <i data-lucide="bolt" class="text-white w-8 h-8"></i>
-        </div>
-        <p class="text-slate-500 text-sm">Iniciando...</p>
-        <div id="debug-text" class="text-[10px] text-red-900 mt-4"></div>
-    </div>
-
-    <!-- PANTALLA DE ENTRADA -->
-    <div id="seccion-login" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
-        <h1 class="text-4xl font-bold mb-8">RunMonitor</h1>
-        
-        <div class="glass p-8 rounded-3xl w-full max-w-sm space-y-4">
-            <div id="div-empresa" class="hidden">
-                <label class="text-xs font-bold text-slate-500 uppercase">Nombre Empresa</label>
-                <input type="text" id="campo-empresa" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-            </div>
-
-            <div>
-                <label class="text-xs font-bold text-slate-500 uppercase">Correo</label>
-                <input type="email" id="campo-email" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-            </div>
-
-            <div>
-                <label class="text-xs font-bold text-slate-500 uppercase">Contraseña</label>
-                <input type="password" id="campo-pass" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-            </div>
-
-            <button onclick="btnEntrar()" id="main-btn" class="w-full bg-blue-600 py-4 rounded-xl font-bold shadow-lg">ENTRAR</button>
-            
-            <p onclick="irARegistro()" id="switch-txt" class="text-center text-sm text-blue-400 cursor-pointer pt-2">¿Registrar empresa nueva?</p>
-        </div>
-    </div>
-
-    <!-- PANTALLA DASHBOARD -->
-    <div id="seccion-dash" class="hidden min-h-screen flex flex-col">
-        <header class="p-4 flex justify-between glass">
-            <h2 class="font-bold text-blue-400">Dashboard</h2>
-            <button onclick="salir()" class="text-red-500 text-xs">CERRAR SESIÓN</button>
-        </header>
-        <div class="p-10 text-center text-slate-500">
-            Conectado con éxito. <br> (Configurando tus equipos...)
-        </div>
-    </div>
-
-    <script>
-        // DATOS LIMPIOS
-        var _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        var _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        
-        var _db;
-        var modoRegistro = false;
-
-        // SEGURO DE VIDA: Forzar que se quite el azul a los 1.5 segundos
-        setTimeout(function() {
-            var loader = document.getElementById('pantalla-carga');
-            if (loader) loader.classList.add('hidden');
-            document.getElementById('seccion-login').classList.remove('hidden');
-        }, 1500);
-
-        window.onload = function() {
-            lucide.createIcons();
-            try {
-                if (window.supabase) {
-                    _db = window.supabase.createClient(_U, _K);
-                    chequearSesion();
-                } else {
-                    document.getElementById('debug-text').innerText = "Error: Librería no cargada.";
-                }
-            } catch (e) {
-                document.getElementById('debug-text').innerText = e.message;
-            }
-        };
-
-        async function chequearSesion() {
-            var { data } = await _db.auth.getSession();
-            if (data && data.session) {
-                mostrarDash();
-            }
-        }
-
-        async function btnEntrar() {
-            var email = document.getElementById('campo-email').value;
-            var pass = document.getElementById('campo-pass').value;
-            var empresa = document.getElementById('campo-empresa').value;
-
-            if (!email || !pass) return alert("Llena los datos");
-
-            try {
-                if (modoRegistro) {
-                    // REGISTRO
-                    var { data: nEmp, error: e1 } = await _db.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
-                    if (e1) throw e1;
-                    var { data: u, error: e2 } = await _db.auth.signUp({ email: email, password: pass });
-                    if (e2) throw e2;
-                    await _db.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nEmp.id }]);
-                    alert("Empresa creada. Inicia sesión.");
-                    location.reload();
-                } else {
-                    // LOGIN
-                    var { error } = await _db.auth.signInWithPassword({ email: email, password: pass });
-                    if (error) throw error;
-                    location.reload();
-                }
-            } catch (err) {
-                alert("Error: " + err.message);
-            }
-        }
-
-        function mostrarDash() {
-            document.getElementById('pantalla-carga').classList.add('hidden');
-            document.getElementById('seccion-login').classList.add('hidden');
-            document.getElementById('seccion-dash').classList.remove('hidden');
-        }
-
-        function irARegistro() {
-            modoRegistro = !modoRegistro;
-            document.getElementById('div-empresa').classList.toggle('hidden');
-            document.getElementById('main-btn').innerText = modoRegistro ? "REGISTRAR EMPRESA" : "ENTRAR";
-        }
-
-        function salir() { _db.auth.signOut(); location.reload(); }
-    </script>
-</body>
-</html>
+    <!-- PANTALLA DE CARGA (Seguro de 1.5s) -->
+    <div id="loader" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center">
+        <span class="loader-ring"></span>
+        <p class="mt-4 t
