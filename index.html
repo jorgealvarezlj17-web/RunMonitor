@@ -9,159 +9,49 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e14; color: #f8fafc; margin: 0; }
+        body { font-family: 'Inter', sans-serif; background-color: #0b0e14; color: #f8fafc; margin: 0; overflow-x: hidden; }
         .glass { background: rgba(22, 26, 35, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        input { background: #161a23 !important; border: 1px solid #1e293b !important; color: white; outline: none; transition: all 0.2s; }
-        input:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2); }
+        input { background: #161a23 !important; border: 1px solid #1e293b !important; color: white; outline: none; }
         .btn-yellow { background: #eab308; color: #000; font-weight: 900; }
-        .btn-yellow:active { transform: scale(0.95); }
         .card-shadow { box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
     </style>
 </head>
-<body class="min-h-screen">
+<body>
 
     <div id="p-loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
-        <div class="p-5 bg-blue-600 rounded-3xl animate-pulse mb-4">
-            <i data-lucide="activity" class="text-white w-10 h-10"></i>
+        <div id="loader-icon" class="p-5 bg-blue-600 rounded-3xl animate-bounce mb-4">
+            <i data-lucide="bolt" class="text-white w-10 h-10"></i>
         </div>
-        <p class="text-slate-500 text-[10px] uppercase font-black tracking-[0.3em]">Conectando...</p>
+        <p id="loader-text" class="text-slate-500 text-[10px] uppercase font-black tracking-[0.3em]">Cargando Sistema...</p>
     </div>
 
     <div id="scr-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
-        <div class="text-center mb-10">
-            <h1 class="text-5xl font-black italic tracking-tighter text-white">Run<span class="text-blue-500">Monitor</span></h1>
-            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">Control Industrial</p>
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-black italic tracking-tighter">Run<span class="text-blue-500">Monitor</span></h1>
+            <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mt-1">Industrial Control</p>
         </div>
-        <div class="glass p-8 rounded-[40px] w-full max-w-sm card-shadow space-y-5">
-            <div>
-                <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-2 block tracking-widest">Correo</label>
-                <input type="email" id="auth-email" class="w-full p-4 rounded-2xl" placeholder="usuario@planta.com">
-            </div>
-            <div>
-                <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-2 block tracking-widest">Clave</label>
-                <input type="password" id="auth-pass" class="w-full p-4 rounded-2xl">
-            </div>
-            <button onclick="login()" class="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase tracking-widest text-[11px] text-white shadow-lg shadow-blue-900/20 active:scale-95 transition-all">Entrar al Sistema</button>
+        <div class="glass p-8 rounded-[40px] w-full max-w-md card-shadow space-y-4">
+            <input type="email" id="auth-email" class="w-full p-4 rounded-2xl" placeholder="Correo">
+            <input type="password" id="auth-pass" class="w-full p-4 rounded-2xl" placeholder="Contraseña">
+            <button onclick="login()" class="w-full bg-blue-600 py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] text-white active:scale-95 transition-all">Entrar</button>
         </div>
     </div>
 
     <div id="scr-dash" class="hidden min-h-screen p-6 pb-32">
         <header class="flex justify-between items-center mb-10">
             <div>
-                <h2 id="d-emp" class="text-3xl font-black italic tracking-tighter">Mi Planta</h2>
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                    <p id="d-rol" class="text-blue-500 font-bold uppercase text-[9px] tracking-widest">Cargando...</p>
-                </div>
+                <h2 id="d-emp" class="text-3xl font-black italic tracking-tighter text-white">Mi Planta</h2>
+                <p id="d-rol" class="text-blue-500 font-bold uppercase text-[9px] tracking-widest italic">Cargando...</p>
             </div>
-            <button onclick="salir()" class="p-4 bg-red-500/10 rounded-2xl text-red-500 border border-red-500/20">
-                <i data-lucide="log-out" class="w-5 h-5"></i>
-            </button>
+            <button onclick="salir()" class="p-4 bg-red-500/10 rounded-2xl text-red-500 border border-red-500/20"><i data-lucide="power" class="w-5 h-5"></i></button>
         </header>
-
-        <div id="lista-equipos" class="grid grid-cols-1 gap-6">
-            </div>
-
-        <button onclick="abrirModal()" class="fixed bottom-10 right-8 btn-yellow p-6 rounded-[30px] shadow-2xl active:scale-90 transition-all">
-            <i data-lucide="plus" class="w-8 h-8 stroke-[3]"></i>
-        </button>
+        <div id="lista-equipos" class="grid grid-cols-1 gap-6"></div>
+        <button onclick="abrirModal()" class="fixed bottom-10 right-8 bg-yellow-400 p-6 rounded-[30px] shadow-2xl text-black active:scale-90 transition-all"><i data-lucide="plus" class="w-8 h-8 stroke-[3]"></i></button>
     </div>
 
     <div id="modal-equipo" class="hidden fixed inset-0 z-[80] bg-black/90 backdrop-blur-md flex items-end sm:items-center justify-center p-4">
-        <div class="glass w-full max-w-md rounded-[40px] p-8 card-shadow border border-white/10">
-            <div class="flex justify-between items-center mb-8">
-                <h2 class="text-2xl font-black italic">Nuevo Equipo</h2>
-                <button onclick="cerrarModal()" class="text-slate-500 p-2"><i data-lucide="x"></i></button>
-            </div>
-            <input type="text" id="new-nom" class="w-full p-5 rounded-2xl mb-6" placeholder="Nombre (Ej: Soplador #01)">
-            <button onclick="guardarEquipo()" class="w-full btn-yellow py-5 rounded-2xl uppercase tracking-widest text-[11px]">Registrar en Planta</button>
-        </div>
-    </div>
-
-    <script>
-        // CREDENCIALES VERIFICADAS
-        const _U = "https://yfsyeziyhlmzrsphefss.supabase.co";
-        const _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E";
-        let _db = null;
-        let _user = null;
-        let _empId = null;
-
-        window.onload = async () => {
-            lucide.createIcons();
-            _db = window.supabase.createClient(_U, _K);
-            
-            const { data: { session } } = await _db.auth.getSession();
-            if (session) {
-                _user = session.user;
-                cargarApp();
-            } else {
-                document.getElementById('p-loader').classList.add('hidden');
-                document.getElementById('scr-auth').classList.remove('hidden');
-            }
-        };
-
-        async function login() {
-            const email = document.getElementById('auth-email').value;
-            const password = document.getElementById('auth-pass').value;
-            const { error } = await _db.auth.signInWithPassword({ email, password });
-            if (error) alert("Credenciales incorrectas");
-            else location.reload();
-        }
-
-        async function cargarApp() {
-            const { data: perfil } = await _db.from('perfiles').select('*, empresas(*)').eq('id', _user.id).single();
-            if (perfil) {
-                _empId = perfil.empresa_id;
-                document.getElementById('d-emp').innerText = perfil.empresas.nombre_empresa;
-                document.getElementById('d-rol').innerText = perfil.rol;
-                document.getElementById('scr-dash').classList.remove('hidden');
-                renderEquipos();
-            }
-            document.getElementById('p-loader').classList.add('hidden');
-        }
-
-        async function renderEquipos() {
-            const { data } = await _db.from('equipos').select('*').eq('empresa_id', _empId).order('nombre');
-            const cont = document.getElementById('lista-equipos');
-            cont.innerHTML = data && data.length > 0 ? data.map(e => `
-                <div class="glass p-7 rounded-[45px] card-shadow border border-white/5">
-                    <div class="flex justify-between items-start mb-8">
-                        <div class="${e.estado === 'ON' ? 'text-green-500 bg-green-500/10' : 'text-blue-500 bg-blue-500/10'} p-5 rounded-3xl border border-current/10">
-                            <i data-lucide="zap" class="w-7 h-7"></i>
-                        </div>
-                        <span class="px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest ${e.estado === 'ON' ? 'bg-green-500 text-black shadow-lg shadow-green-500/20' : 'bg-slate-800 text-slate-500'}">
-                            ● ${e.estado}
-                        </span>
-                    </div>
-                    <h3 class="text-2xl font-black italic mb-8 text-white tracking-tight">${e.nombre}</h3>
-                    <button onclick="toggleEstado('${e.id}', '${e.estado}')" class="w-full py-5 rounded-3xl font-black text-[11px] uppercase tracking-[0.2em] transition-all ${e.estado === 'ON' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-white text-black active:scale-95'} shadow-xl">
-                        ${e.estado === 'ON' ? 'Detener Activo' : 'Iniciar Activo'}
-                    </button>
-                </div>
-            `).join('') : '<p class="text-center text-slate-600 text-[10px] mt-20 uppercase font-black tracking-widest">Sin equipos en esta empresa</p>';
-            lucide.createIcons();
-        }
-
-        function abrirModal() { document.getElementById('modal-equipo').classList.remove('hidden'); }
-        function cerrarModal() { document.getElementById('modal-equipo').classList.add('hidden'); }
-
-        async function guardarEquipo() {
-            const nom = document.getElementById('new-nom').value;
-            if(nom) {
-                const { error } = await _db.from('equipos').insert([{ nombre: nom, empresa_id: _empId, estado: 'OFF' }]);
-                if (error) alert("Error al guardar");
-                else { cerrarModal(); renderEquipos(); }
-            }
-        }
-
-        async function toggleEstado(id, est) {
-            const nuevo = est === 'ON' ? 'OFF' : 'ON';
-            await _db.from('equipos').update({ estado: nuevo }).eq('id', id);
-            renderEquipos();
-        }
-
-        function salir() { _db.auth.signOut().then(() => location.reload()); }
-    </script>
-</body>
-</html>
+        <div class="glass w-full max-w-md rounded-[40px] p-8 card-shadow">
+            <h2 class="text-2xl font-black italic mb-6">Nuevo Equipo</h2>
+            <input type="text" id="new-nom" class="w-full p-4 rounded-2xl mb-4" placeholder="Nombre (Ej: Soplador)">
+            <button onclick="guardarEquipo()" class="w-full bg-yellow-400 py-5 rounded-2xl font-black uppercase text-
