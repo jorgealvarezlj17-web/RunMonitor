@@ -3,179 +3,216 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro</title>
-    
-    <!-- Librerías -->
+    <title>RunMonitor Pro | Master</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #0b0e14; color: #f8fafc; overflow: hidden; }
-        .glass { background: rgba(22, 26, 35, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #f8fafc; overflow-x: hidden; }
+        .glass { background: rgba(22, 26, 35, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        input { background: #161a23 !important; border: 1px solid #1e293b !important; }
-        input:focus { border-color: #3b82f6 !important; outline: none; }
+        input { background: #161a23 !important; border: 1px solid #1e293b !important; outline: none; }
+        .status-led { width: 10px; height: 10px; border-radius: 50%; }
+        .led-on { background: #10b981; box-shadow: 0 0 12px #10b981; }
+        .led-off { background: #334155; }
     </style>
 </head>
 <body>
 
-    <!-- 1. CARGA -->
+    <!-- PANTALLA CARGA -->
     <div id="loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
-        <div class="p-4 bg-blue-600 rounded-3xl animate-bounce mb-4 shadow-2xl shadow-blue-500/40">
+        <div class="p-4 bg-blue-600 rounded-3xl animate-bounce shadow-2xl shadow-blue-500/40">
             <i data-lucide="bolt" class="text-white w-10 h-10"></i>
         </div>
-        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sincronizando...</p>
     </div>
 
-    <!-- 2. LOGIN / REGISTRO / OLVIDO -->
-    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
-        <div class="w-full max-w-sm text-center">
-            <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white">Run<span class="text-blue-500">Monitor</span></h1>
-            <p id="auth-tag" class="text-slate-500 mb-10 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
-
-            <div class="glass p-8 rounded-[40px] space-y-4 text-left shadow-2xl">
-                
-                <!-- Nombre Empresa (Solo Registro) -->
-                <div id="group-empresa" class="hidden">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de tu Empresa</label>
-                    <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl text-white outline-none">
-                </div>
-
-                <!-- Email -->
-                <div>
-                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Correo Electrónico</label>
-                    <input type="email" id="val-email" class="w-full p-4 rounded-2xl text-white outline-none" placeholder="tu@correo.com">
-                </div>
-
-                <!-- Password (Se oculta en modo Olvido) -->
-                <div id="group-pass">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
-                    <div class="relative">
-                        <input type="password" id="val-pass" class="w-full p-4 rounded-2xl text-white outline-none">
-                        <button onclick="verPass()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-0.5 text-slate-600">
-                            <i data-lucide="eye" id="ojo-icon" class="w-5 h-5"></i>
-                        </button>
-                    </div>
-                </div>
-
-                <button onclick="ejecutarAuth()" id="btn-auth" class="w-full bg-blue-600 py-5 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest text-xs">Entrar</button>
-
-                <div class="text-center pt-2 space-y-3">
-                    <p onclick="cambiarModo('registro')" id="link-reg" class="text-xs text-blue-400 font-bold cursor-pointer">¿Empresa nueva? Regístrate</p>
-                    <p onclick="cambiarModo('olvido')" id="link-forgot" class="text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter">Olvidé mi contraseña</p>
-                    <p onclick="location.reload()" id="link-back" class="hidden text-xs text-slate-500 font-bold underline">Volver al inicio</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 3. PANEL DASHBOARD -->
-    <div id="screen-dash" class="hidden min-h-screen flex flex-col p-6">
-        <header class="flex justify-between items-center mb-8">
+    <!-- 1. LOGIN (Diseño Protegido) -->
+    <div id="scr-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+        <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white">Run<span class="text-blue-500">Monitor</span></h1>
+        <p class="text-slate-500 mb-8 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
+        <div class="glass p-8 rounded-[40px] w-full max-w-sm space-y-4">
             <div>
-                <h2 id="dash-company" class="font-black text-white text-2xl tracking-tight italic">RunMonitor</h2>
-                <span id="dash-role" class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Master</span>
+                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Correo</label>
+                <input type="email" id="email" class="w-full p-4 rounded-2xl text-white">
             </div>
-            <button onclick="cerrarSesion()" class="text-red-500"><i data-lucide="power"></i></button>
-        </header>
-        <div class="bg-blue-600/10 p-10 rounded-[40px] border border-blue-500/20 text-center">
-            <i data-lucide="shield-check" class="w-12 h-12 text-blue-500 mx-auto mb-4"></i>
-            <h3 class="text-xl font-black text-white italic">Acceso de Dueño</h3>
-            <p id="dash-email" class="text-slate-400 text-sm mt-2 font-bold"></p>
+            <div id="auth-pass-group">
+                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
+                <div class="relative">
+                    <input type="password" id="pass" class="w-full p-4 rounded-2xl text-white">
+                    <button onclick="toggleOjo()" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-600">
+                        <i data-lucide="eye" id="ojo" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+            <button onclick="auth()" id="btn-auth" class="w-full bg-blue-600 py-5 rounded-2xl font-black text-xs uppercase tracking-widest">Entrar</button>
+            <div class="text-center space-y-2">
+                <p onclick="cambiarModo('reg')" id="txt-reg" class="text-xs text-blue-400 font-bold cursor-pointer">¿No tienes cuenta? Regístrate</p>
+                <p onclick="cambiarModo('forgot')" id="txt-forgot" class="text-[10px] text-slate-600 font-bold cursor-pointer uppercase">Olvidé mi contraseña</p>
+                <p onclick="location.reload()" id="txt-back" class="hidden text-xs text-slate-400 underline cursor-pointer">Volver</p>
+            </div>
         </div>
+    </div>
+
+    <!-- 2. ELECCIÓN DE ROL (Solo para nuevos) -->
+    <div id="scr-choice" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <h2 class="text-2xl font-black mb-8 italic">Configura tu acceso</h2>
+        <div class="grid gap-4 w-full max-w-sm">
+            <button onclick="modoAdmin()" class="glass p-8 rounded-[32px] text-left border-blue-500/20 hover:border-blue-500 transition-all">
+                <i data-lucide="building" class="text-blue-500 mb-2"></i>
+                <h4 class="font-bold text-white">Dueño de Empresa</h4>
+                <p class="text-[10px] text-slate-500 uppercase font-bold mt-1">Para gestionar equipos y personal</p>
+            </button>
+            <button onclick="modoOp()" class="glass p-8 rounded-[32px] text-left border-emerald-500/20 hover:border-emerald-500 transition-all">
+                <i data-lucide="users" class="text-emerald-500 mb-2"></i>
+                <h4 class="font-bold text-white">Operador</h4>
+                <p class="text-[10px] text-slate-500 uppercase font-bold mt-1">Para registro de horas en campo</p>
+            </button>
+        </div>
+    </div>
+
+    <!-- 3. VISTA JORGE (SUPER ADMIN) -->
+    <div id="scr-super" class="hidden min-h-screen flex flex-col">
+        <header class="p-6 glass flex justify-between items-center sticky top-0 z-50">
+            <h2 class="font-black text-blue-500 text-xs tracking-[0.3em] uppercase">Control Maestro (Jorge)</h2>
+            <button onclick="logout()" class="text-red-500"><i data-lucide="power"></i></button>
+        </header>
+        <main id="super-content" class="p-6 space-y-4">
+            <!-- Aquí verás: Empresa -> Trabajadores -> Equipos -->
+        </main>
+    </div>
+
+    <!-- 4. VISTA DASHBOARD (ADMIN / OPERADOR) -->
+    <div id="scr-dash" class="hidden min-h-screen flex flex-col">
+        <header class="p-6 glass flex justify-between items-center sticky top-0 z-50">
+            <div>
+                <h2 id="disp-empresa" class="font-black text-white italic">Cargando...</h2>
+                <p id="disp-rol" class="text-[9px] text-blue-500 font-bold uppercase tracking-widest">Rol</p>
+            </div>
+            <button onclick="logout()" class="text-red-500"><i data-lucide="power"></i></button>
+        </header>
+        
+        <!-- Panel Admin: Agregar trabajadores -->
+        <div id="panel-admin" class="hidden p-6 pb-0">
+            <div class="glass p-4 rounded-3xl space-y-3">
+                <h3 class="text-[10px] font-bold text-slate-500 uppercase">Autorizar Trabajador (Email)</h3>
+                <div class="flex gap-2">
+                    <input type="email" id="inv-mail" class="flex-1 p-3 rounded-xl text-xs" placeholder="correo@empleado.com">
+                    <button onclick="autorizar()" class="bg-blue-600 px-4 rounded-xl text-[10px] font-bold">AÑADIR</button>
+                </div>
+            </div>
+        </div>
+
+        <main id="dash-content" class="p-6 space-y-4"></main>
     </div>
 
     <script>
-        var _URL_S = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        var _KEY_S = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        var _db = null;
-        var _modo = 'login';
+        var _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
+        var _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
+        var _db = window.supabase.createClient(_U, _K);
+        var curModo = 'login';
+        var miU = null;
 
-        // Quitar loader tras 1.5s
-        setTimeout(function(){ document.getElementById('loader').classList.add('hidden'); }, 1500);
-
-        window.onload = function() {
+        window.onload = async () => {
             lucide.createIcons();
-            if (window.supabase) {
-                _db = window.supabase.createClient(_URL_S, _KEY_S);
-                chequearSesion();
-            }
+            var { data: { session } } = await _db.auth.getSession();
+            if (session) { miU = session.user; cargarPerfil(); } 
+            else quitarLoader('scr-auth');
         };
 
-        async function chequearSesion() {
-            var { data } = await _db.auth.getSession();
-            if (data && data.session) {
-                cargarDashboard(data.session.user);
-            } else {
-                document.getElementById('screen-auth').classList.remove('hidden');
+        async function cargarPerfil() {
+            var { data } = await _db.from('perfiles').select('*, empresas(*)').eq('id', miU.id).single();
+            if (!data || data.rol === 'pendiente') quitarLoader('scr-choice');
+            else if (data.rol === 'super_admin') { quitarLoader('scr-super'); renderSuper(); }
+            else { 
+                quitarLoader('scr-dash'); 
+                document.getElementById('disp-empresa').innerText = data.empresas ? data.empresas.nombre_empresa : 'En Espera';
+                document.getElementById('disp-rol').innerText = data.rol;
+                if(data.rol === 'admin') document.getElementById('panel-admin').classList.remove('hidden');
+                renderEquipos(data.empresa_id);
             }
         }
 
-        async function cargarDashboard(user) {
-            var { data } = await _db.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', user.id).single();
-            document.getElementById('screen-auth').classList.add('hidden');
-            document.getElementById('screen-dash').classList.remove('hidden');
-            document.getElementById('dash-email').innerText = user.email;
-            if(data) {
-                document.getElementById('dash-company').innerText = data.empresas.nombre_empresa;
-                document.getElementById('dash-role').innerText = data.rol;
-            }
+        async function renderSuper() {
+            const { data: emps } = await _db.from('empresas').select('*, perfiles(*), equipos(*)');
+            const cont = document.getElementById('super-content');
+            cont.innerHTML = emps.map(e => `
+                <div class="glass p-6 rounded-[32px] space-y-3">
+                    <h3 class="font-black text-blue-500 italic text-xl">${e.nombre_empresa}</h3>
+                    <div class="flex gap-4 border-t border-white/5 pt-3">
+                        <div class="text-left">
+                            <p class="text-[9px] text-slate-500 uppercase font-bold">Personal</p>
+                            <p class="text-xs font-bold text-white">${e.perfiles.length} registrados</p>
+                        </div>
+                        <div class="text-left">
+                            <p class="text-[9px] text-slate-500 uppercase font-bold">Activos</p>
+                            <p class="text-xs font-bold text-white">${e.equipos.length} equipos</p>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
         }
 
-        async function ejecutarAuth() {
-            var email = document.getElementById('val-email').value.trim();
-            var pass = document.getElementById('val-pass').value.trim();
-            var emp = document.getElementById('val-empresa').value.trim();
+        async function autorizar() {
+            const email = document.getElementById('inv-mail').value.trim();
+            if(!email) return;
+            // Aquí el Admin guarda el correo en una lista de autorizados (invitaciones)
+            await _db.from('invitaciones').insert([{ email, empresa_id: miPerfil.empresa_id }]);
+            alert("Operador autorizado. Él debe registrarse con ese mismo correo.");
+        }
 
-            if (!email) return alert("Escribe tu correo");
-            if (_modo !== 'olvido' && !pass) return alert("Escribe tu contraseña");
-
+        async function auth() {
+            var email = document.getElementById('email').value.trim();
+            var pass = document.getElementById('pass').value.trim();
             try {
-                if (_modo === 'login') {
-                    const { error } = await _db.auth.signInWithPassword({ email, password: pass });
-                    if (error) throw error;
-                    location.reload();
-                } 
-                else if (_modo === 'registro') {
-                    if (!emp) return alert("Nombre de empresa obligatorio");
-                    const { data: nE, error: e1 } = await _db.from('empresas').insert([{ nombre_empresa: emp }]).select().single();
-                    if (e1) throw e1;
-                    const { data: u, error: e2 } = await _db.auth.signUp({ email, password: pass });
-                    if (e2) throw e2;
-                    await _db.from('perfiles').insert([{ id: u.user.id, email, rol: 'admin', empresa_id: nE.id }]);
-                    alert("¡Registrado! Revisa tu bandeja de SPAM.");
-                    location.reload();
+                if (curModo === 'reg') {
+                    var { data } = await _db.auth.signUp({ email, password: pass });
+                    await _db.from('perfiles').insert([{ id: data.user.id, email, rol: 'pendiente' }]);
+                    alert("¡Registrado! Elige tu perfil ahora.");
+                } else if (curModo === 'forgot') {
+                    await _db.auth.resetPasswordForEmail(email);
+                    alert("Correo de recuperación enviado.");
+                } else {
+                    await _db.auth.signInWithPassword({ email, password: pass });
                 }
-                else if (_modo === 'olvido') {
-                    const { error } = await _db.auth.resetPasswordForEmail(email);
-                    if (error) throw error;
-                    alert("Si el correo está registrado, recibirás un enlace. Revisa SPAM.");
-                    location.reload();
-                }
+                location.reload();
             } catch (e) { alert(e.message); }
         }
 
         function cambiarModo(m) {
-            _modo = m;
-            document.getElementById('group-empresa').className = (m === 'registro' ? '' : 'hidden');
-            document.getElementById('group-pass').className = (m === 'olvido' ? 'hidden' : '');
-            document.getElementById('link-reg').className = (m === 'login' ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden');
-            document.getElementById('link-forgot').className = (m === 'login' ? 'text-[10px] text-slate-600 font-bold uppercase tracking-tighter' : 'hidden');
-            document.getElementById('link-back').className = (m === 'login' ? 'hidden' : 'text-xs text-slate-500 font-bold underline block pt-4');
-            
-            var b = document.getElementById('btn-auth');
-            b.innerText = m === 'registro' ? 'Crear Empresa' : m === 'olvido' ? 'Recuperar Cuenta' : 'Iniciar Sesión';
+            curModo = m;
+            document.getElementById('auth-pass-group').className = (m === 'forgot' ? 'hidden' : '');
+            document.getElementById('btn-auth').innerText = (m === 'reg' ? 'REGISTRARME' : m === 'forgot' ? 'ENVIAR ENLACE' : 'ENTRAR');
+            document.getElementById('txt-reg').className = (m === 'login' ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden');
+            document.getElementById('txt-forgot').className = (m === 'login' ? 'text-[10px] text-slate-600 font-bold cursor-pointer uppercase' : 'hidden');
+            document.getElementById('txt-back').classList.remove('hidden');
         }
 
-        function verPass() {
-            var i = document.getElementById('val-pass');
-            i.type = i.type === 'password' ? 'text' : 'password';
+        function toggleOjo() {
+            var i = document.getElementById('pass');
+            i.type = (i.type === 'password' ? 'text' : 'password');
             lucide.createIcons();
         }
 
-        function cerrarSesion() { _db.auth.signOut(); location.reload(); }
+        async function modoAdmin() {
+            var n = prompt("Nombre de tu empresa:");
+            if(!n) return;
+            const { data: emp } = await _db.from('empresas').insert([{ nombre_empresa: n }]).select().single();
+            await _db.from('perfiles').update({ rol: 'admin', empresa_id: emp.id }).eq('id', miU.id);
+            location.reload();
+        }
+
+        async function modoOp() {
+            await _db.from('perfiles').update({ rol: 'operador' }).eq('id', miU.id);
+            alert("Perfil de Operador listo. Espera a ser vinculado.");
+            location.reload();
+        }
+
+        function quitarLoader(scr) {
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById(scr).classList.remove('hidden');
+        }
+        function logout() { _db.auth.signOut(); location.reload(); }
     </script>
 </body>
 </html>
