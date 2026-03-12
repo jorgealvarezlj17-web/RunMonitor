@@ -4,190 +4,144 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RunMonitor Pro</title>
-    
-    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #0b0e14; color: #f8fafc; overflow-x: hidden; }
-        .glass { background: rgba(22, 26, 35, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .glass { background: rgba(22, 26, 35, 0.8); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        input { background: #161a23 !important; border: 1px solid #1e293b !important; outline: none; color: white; }
+        input { background: #161a23 !important; border: 1px solid #1e293b !important; color: white; outline: none; }
+        .card-shadow { box-shadow: 0 20px 50px rgba(0,0,0,0.4); }
+        .btn-yellow { background: #eab308; color: #000; transition: all 0.2s ease; }
+        .btn-yellow:active { transform: scale(0.95); }
     </style>
 </head>
-<body>
+<body class="min-h-screen">
 
-    <!-- PANTALLA DE CARGA (Ahora se quita sola pase lo que pase) -->
     <div id="p-loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
-        <div class="p-5 bg-blue-600 rounded-3xl animate-bounce mb-4">
-            <i data-lucide="bolt" class="text-white w-10 h-10"></i>
+        <div class="p-5 bg-blue-600 rounded-3xl animate-pulse mb-4">
+            <i data-lucide="activity" class="text-white w-10 h-10"></i>
         </div>
-        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Iniciando...</p>
+        <p class="text-slate-500 text-[10px] uppercase font-black tracking-[0.3em]">Sincronizando...</p>
     </div>
 
-    <!-- SECCIÓN AUTH -->
-    <div id="scr-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
-        <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white italic">Run<span class="text-blue-500">Monitor</span></h1>
-        <p class="text-slate-600 mb-8 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión de Activos</p>
+    <div id="modal-equipo" class="hidden fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center p-4">
+        <div class="glass w-full max-w-md rounded-[40px] p-8 card-shadow">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-black italic text-white">Nuevo Equipo</h2>
+                <button onclick="cerrarModal()" class="text-slate-500 p-2"><i data-lucide="x"></i></button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block">Nombre (Ej: Soplador #01)</label>
+                    <input type="text" id="new-nom" class="w-full p-4 rounded-2xl" placeholder="Nombre del activo">
+                </div>
+                <button onclick="guardarEquipo()" class="w-full btn-yellow py-5 rounded-2xl font-black uppercase tracking-widest text-[10px] mt-4">Guardar en Base de Datos</button>
+            </div>
+        </div>
+    </div>
 
-        <div class="glass p-8 rounded-[40px] w-full max-w-sm space-y-4 text-left shadow-2xl">
-            <div id="group-empresa" class="hidden">
-                <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block">Nombre de Empresa</label>
-                <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl" placeholder="Ej: Camaronera Master">
-            </div>
+    <div id="scr-dash" class="hidden min-h-screen p-6 pb-32">
+        <header class="flex justify-between items-center mb-10">
             <div>
-                <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block">Correo</label>
-                <input type="email" id="val-email" class="w-full p-4 rounded-2xl" placeholder="tu@correo.com">
-            </div>
-            <div id="group-pass">
-                <label class="text-[10px] font-black text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
-                <div class="relative">
-                    <input type="password" id="val-pass" class="w-full p-4 rounded-2xl">
-                    <button onclick="verClave()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-0.5 text-slate-600">
-                        <i data-lucide="eye" id="ojo-icon" class="w-5 h-5"></i>
-                    </button>
+                <h2 id="d-emp" class="text-3xl font-black italic tracking-tighter text-white">Cargando...</h2>
+                <div class="flex items-center gap-2">
+                    <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                    <p id="d-rol" class="text-blue-500 font-bold uppercase text-[9px] tracking-[0.2em]">Línea Activa</p>
                 </div>
             </div>
-            <button onclick="btnAccion()" id="btn-master" class="w-full bg-blue-600 py-5 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest text-[10px]">Entrar</button>
-            <div class="text-center pt-2 space-y-3">
-                <p onclick="cambiarVista('reg')" id="l-reg" class="text-xs text-blue-400 font-bold cursor-pointer">¿Nueva Empresa? Regístrate</p>
-                <p onclick="cambiarVista('forgot')" id="l-forgot" class="text-[10px] text-slate-600 font-bold cursor-pointer uppercase tracking-widest">Olvidé mi contraseña</p>
-                <p onclick="window.location.reload()" id="l-back" class="hidden text-xs text-slate-400 font-bold underline cursor-pointer pt-4 block">Volver</p>
+            <button onclick="salir()" class="p-4 bg-red-500/10 rounded-2xl text-red-500 border border-red-500/20">
+                <i data-lucide="power" class="w-5 h-5"></i>
+            </button>
+        </header>
+
+        <div id="lista-equipos" class="grid grid-cols-1 gap-6">
             </div>
-        </div>
-    </div>
 
-    <!-- DASHBOARDS -->
-    <div id="scr-super" class="hidden min-h-screen flex flex-col p-6 italic">
-        <h2 class="text-blue-500 font-black text-xs uppercase tracking-widest mb-4">Master Control (Jorge)</h2>
-        <div id="lista-super" class="space-y-4"></div>
-        <button onclick="salir()" class="mt-10 text-red-500 text-xs font-bold uppercase underline">Cerrar Sesión</button>
-    </div>
-
-    <div id="scr-dash" class="hidden min-h-screen flex flex-col p-6 text-center justify-center">
-        <h2 id="d-emp" class="text-3xl font-black italic">Empresa</h2>
-        <p id="d-rol" class="text-blue-500 font-bold uppercase text-[10px] tracking-widest mt-2">Rol</p>
-        <button onclick="salir()" class="mt-10 text-red-500 text-xs font-bold uppercase underline">Cerrar Sesión</button>
+        <button onclick="abrirModal()" class="fixed bottom-10 right-8 bg-yellow-400 p-6 rounded-[30px] shadow-2xl text-black active:scale-90 transition-all">
+            <i data-lucide="plus" class="w-8 h-8 stroke-[3]"></i>
+        </button>
     </div>
 
     <script>
-        // --- CONFIGURACIÓN ---
-        var _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        var _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        var _db = null;
-        var _modo = 'login';
+        const _U = "https://yfsyeziyhlmzrsphefss.supabase.co";
+        const _K = "Sb_publishable_-fqX1xVtqDZKduWSEmR8gg_cP69fCsJ";
+        let _db = null;
+        let _user = null;
+        let _empId = null;
 
-        // LÓGICA DE CARGA SEGURA
-        window.onload = function() {
+        window.onload = async () => {
             lucide.createIcons();
-            
-            // Forzamos quitar el loader a los 2 segundos pase lo que pase
-            setTimeout(function() {
-                document.getElementById('p-loader').classList.add('hidden');
-                if(!_db) document.getElementById('scr-auth').classList.remove('hidden');
-            }, 2000);
-
-            try {
-                if (window.supabase) {
-                    _db = window.supabase.createClient(_U, _K);
-                    iniciarCheck();
+            if (window.supabase) {
+                _db = window.supabase.createClient(_U, _K);
+                const { data: { session } } = await _db.auth.getSession();
+                if (session) {
+                    _user = session.user;
+                    cargarApp();
+                } else {
+                    document.getElementById('p-loader').innerHTML = `<button onclick="location.reload()" class="bg-blue-600 p-4 rounded-xl text-xs font-bold">REINTENTAR SESIÓN</button>`;
                 }
-            } catch (e) { console.error(e); }
+            }
         };
 
-        async function iniciarCheck() {
-            var { data } = await _db.auth.getSession();
-            if (data && data.session) {
-                cargarPerfil(data.session.user.id);
-            } else {
-                document.getElementById('p-loader').classList.add('hidden');
-                document.getElementById('scr-auth').classList.remove('hidden');
+        async function cargarApp() {
+            const { data: perfil } = await _db.from('perfiles').select('*, empresas(*)').eq('id', _user.id).single();
+            if (perfil) {
+                _empId = perfil.empresa_id;
+                document.getElementById('d-emp').innerText = perfil.empresas.nombre_empresa;
+                document.getElementById('scr-dash').classList.remove('hidden');
+                renderEquipos();
             }
-        }
-
-        async function cargarPerfil(uid) {
-            var { data } = await _db.from('perfiles').select('*, empresas(*)').eq('id', uid).single();
             document.getElementById('p-loader').classList.add('hidden');
-            if (data) {
-                if (data.rol === 'super_admin') {
-                    document.getElementById('scr-super').classList.remove('hidden');
-                    renderSuper();
-                } else {
-                    document.getElementById('scr-dash').classList.remove('hidden');
-                    document.getElementById('d-emp').innerText = data.empresas.nombre_empresa;
-                    document.getElementById('d-rol').innerText = data.rol;
-                }
-            } else {
-                document.getElementById('scr-auth').classList.remove('hidden');
+        }
+
+        async function renderEquipos() {
+            const { data } = await _db.from('equipos').select('*').eq('empresa_id', _empId).order('nombre');
+            const cont = document.getElementById('lista-equipos');
+            if (!data || data.length === 0) {
+                cont.innerHTML = `<p class="text-slate-600 text-center text-xs italic mt-20">No hay equipos. Toca el botón (+) para empezar.</p>`;
+                return;
             }
-        }
-
-        async function btnAccion() {
-            var email = document.getElementById('val-email').value.trim();
-            var pass = document.getElementById('val-pass').value.trim();
-            var emp = document.getElementById('val-empresa').value.trim();
-            var btn = document.getElementById('btn-master');
-
-            if (!email) return alert("Escribe tu correo");
-            btn.disabled = true;
-            btn.innerText = "PROCESANDO...";
-
-            try {
-                if (_modo === 'login') {
-                    const { error } = await _db.auth.signInWithPassword({ email, password: pass });
-                    if (error) throw error;
-                    window.location.reload();
-                } 
-                else if (_modo === 'reg') {
-                    if(!emp) throw new Error("Nombre de empresa requerido");
-                    const { data: nE } = await _db.from('empresas').insert([{ nombre_empresa: emp }]).select().single();
-                    const { data: u } = await _db.auth.signUp({ email, password: pass });
-                    await _db.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nE.id }]);
-                    alert("Empresa Creada");
-                    window.location.reload();
-                }
-                else if (_modo === 'forgot') {
-                    const { error } = await _db.auth.resetPasswordForEmail(email);
-                    if (error) throw error;
-                    alert("Enlace enviado.");
-                }
-            } catch (e) {
-                alert("AVISO: " + e.message);
-                btn.disabled = false;
-                btn.innerText = "Reintentar";
-            }
-        }
-
-        function cambiarVista(m) {
-            _modo = m;
-            document.getElementById('group-empresa').className = (m === 'reg' ? '' : 'hidden');
-            document.getElementById('group-pass').className = (m === 'forgot' ? 'hidden' : '');
-            document.getElementById('l-reg').className = (m === 'login' ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden');
-            document.getElementById('l-forgot').className = (m === 'login' ? 'text-[10px] text-slate-600 font-bold cursor-pointer uppercase' : 'hidden');
-            document.getElementById('l-back').classList.remove('hidden');
-            document.getElementById('btn-master').innerText = m === 'reg' ? 'REGISTRAR MI EMPRESA' : m === 'forgot' ? 'ENVIAR ENLACE' : 'INICIAR SESIÓN';
-        }
-
-        function verClave() {
-            var i = document.getElementById('val-pass');
-            i.type = (i.type === 'password' ? 'text' : 'password');
+            cont.innerHTML = data.map(e => `
+                <div class="glass p-6 rounded-[40px] card-shadow">
+                    <div class="flex justify-between items-start mb-6">
+                        <div class="${e.estado === 'ON' ? 'bg-green-500/10 text-green-500' : 'bg-blue-600/10 text-blue-500'} p-4 rounded-3xl border border-current/10">
+                            <i data-lucide="${e.estado === 'ON' ? 'refresh-cw' : 'zap'}" class="w-6 h-6 ${e.estado === 'ON' ? 'animate-spin' : ''}"></i>
+                        </div>
+                        <span class="px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-widest ${e.estado === 'ON' ? 'bg-green-500 text-black' : 'bg-slate-800 text-slate-500'}">
+                            ● ${e.estado}
+                        </span>
+                    </div>
+                    <h3 class="text-2xl font-black italic text-white">${e.nombre}</h3>
+                    <p class="text-slate-500 text-[10px] font-bold uppercase tracking-widest mb-6">Hras: ${e.total_horas_mes || 0}h</p>
+                    <button onclick="toggleEstado('${e.id}', '${e.estado}')" class="w-full py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all ${e.estado === 'ON' ? 'bg-red-500/10 text-red-500 border border-red-500/20' : 'bg-white text-black'}">
+                        ${e.estado === 'ON' ? 'Detener Proceso' : 'Iniciar Proceso'}
+                    </button>
+                </div>
+            `).join('');
             lucide.createIcons();
         }
 
-        async function renderSuper() {
-            const { data } = await _db.from('empresas').select('*, perfiles(count)');
-            document.getElementById('lista-super').innerHTML = data.map(e => `
-                <div class="glass p-6 rounded-[32px] text-left">
-                    <h3 class="font-black text-blue-500 italic text-xl">${e.nombre_empresa}</h3>
-                    <p class="text-[9px] text-slate-500 font-bold uppercase mt-2">Usuarios: ${e.perfiles[0].count}</p>
-                </div>
-            `).join('');
+        function abrirModal() { document.getElementById('modal-equipo').classList.remove('hidden'); }
+        function cerrarModal() { document.getElementById('modal-equipo').classList.add('hidden'); }
+
+        async function guardarEquipo() {
+            const nom = document.getElementById('new-nom').value;
+            if(!nom) return;
+            await _db.from('equipos').insert([{ nombre: nom, empresa_id: _empId, estado: 'OFF' }]);
+            cerrarModal();
+            renderEquipos();
         }
 
-        function salir() { _db.auth.signOut(); window.location.reload(); }
+        async function toggleEstado(id, est) {
+            const nuevo = est === 'ON' ? 'OFF' : 'ON';
+            await _db.from('equipos').update({ estado: nuevo, ultimo_encendido: new Date() }).eq('id', id);
+            renderEquipos();
+        }
+
+        function salir() { _db.auth.signOut().then(() => location.reload()); }
     </script>
 </body>
 </html>
