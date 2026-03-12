@@ -3,310 +3,199 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro | Industrial</title>
+    <title>RunMonitor Pro</title>
+    
+    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #f8fafc; -webkit-tap-highlight-color: transparent; }
-        .glass { background: rgba(22, 26, 35, 0.8); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .card-log { background: rgba(30, 36, 48, 0.5); border-radius: 12px; margin-bottom: 8px; }
-        .status-led { width: 12px; height: 12px; border-radius: 50%; }
-        .led-on { background: #10b981; box-shadow: 0 0 15px #10b981; }
-        .led-off { background: #475569; }
-        .led-error { background: #fbbf24; box-shadow: 0 0 15px #fbbf24; }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #f8fafc; overflow: hidden; }
+        .glass { background: rgba(22, 26, 35, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        .btn-pwr { transition: all 0.2s; }
-        .btn-pwr:active { transform: scale(0.95); }
+        input:focus { border-color: #3b82f6 !important; background: rgba(30, 41, 59, 0.8) !important; }
     </style>
 </head>
 <body>
 
-    <!-- PANTALLA DE CARGA -->
-    <div id="loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
+    <!-- 1. PANTALLA DE CARGA (Failsafe 2 seg) -->
+    <div id="pantalla-carga" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
         <div class="p-4 bg-blue-600 rounded-3xl animate-bounce shadow-2xl shadow-blue-500/20">
             <i data-lucide="bolt" class="text-white w-10 h-10"></i>
         </div>
+        <p class="mt-4 text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sincronizando...</p>
     </div>
 
-    <!-- PANTALLA AUTH (Se mantiene igual para no perder acceso) -->
-    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
-        <h1 class="text-4xl font-black mb-8">RunMonitor</h1>
-        <div class="glass p-8 rounded-[40px] w-full max-w-sm space-y-4 text-left">
-            <div id="div-empresa" class="hidden">
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2">Nombre Empresa</label>
-                <input type="text" id="reg-empresa" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none">
-            </div>
-            <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2">Correo</label>
-                <input type="email" id="email" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none">
-            </div>
-            <div>
-                <label class="text-[10px] font-bold text-slate-500 uppercase ml-2">Contraseña</label>
-                <div class="relative">
-                    <input type="password" id="pass" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none">
-                    <button onclick="verClave()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-1 text-slate-500"><i data-lucide="eye" id="ojo" class="w-5 h-5"></i></button>
+    <!-- 2. SECCIÓN DE ACCESO (Login / Registro / Olvido) -->
+    <div id="seccion-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+        <div class="w-full max-w-sm text-center">
+            <h1 class="text-5xl font-black mb-1 tracking-tighter italic">Run<span class="text-blue-500">Monitor</span></h1>
+            <p id="auth-sub" class="text-slate-500 mb-8 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
+
+            <div class="glass p-8 rounded-[40px] space-y-4 text-left shadow-2xl">
+                
+                <!-- Campo Nombre Empresa (Solo Registro) -->
+                <div id="div-nombre-emp" class="hidden">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de Empresa</label>
+                    <input type="text" id="reg-empresa" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none" placeholder="Ej: Minera Norte">
                 </div>
-            </div>
-            <button onclick="handleAuth()" id="btn-auth" class="w-full bg-blue-600 py-4 rounded-2xl font-black shadow-lg uppercase tracking-widest text-xs">Entrar</button>
-            <p onclick="toggleReg()" id="toggle-txt" class="text-center text-xs text-blue-400 font-bold cursor-pointer">¿Nueva Empresa?</p>
-        </div>
-    </div>
 
-    <!-- PANTALLA DASHBOARD (LISTA) -->
-    <div id="screen-dash" class="hidden min-h-screen flex flex-col">
-        <header class="p-6 flex justify-between items-center sticky top-0 bg-[#0b0e14]/80 backdrop-blur-md z-40">
-            <h2 class="font-black text-xl">Registro de Equipos</h2>
-            <div class="flex gap-3">
-                <button onclick="abrirModalInvitacion()" id="btn-invite" class="hidden p-2 text-slate-400"><i data-lucide="user-plus"></i></button>
-                <button onclick="logout()" class="p-2 text-red-500"><i data-lucide="power"></i></button>
-            </div>
-        </header>
-
-        <div id="stats-bar" class="px-6 pb-4">
-            <p id="count-txt" class="text-xs font-bold text-slate-500">0 EQUIPOS</p>
-        </div>
-
-        <main id="list-container" class="px-6 space-y-4 pb-24">
-            <!-- Tarjetas de equipos se cargan aquí -->
-        </main>
-
-        <button id="btn-add-float" onclick="abrirModalEquipo()" class="hidden fixed bottom-8 right-8 w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-2xl shadow-blue-500/30 z-50">
-            <i data-lucide="plus" class="text-white w-8 h-8"></i>
-        </button>
-    </div>
-
-    <!-- PANTALLA DETALLE (REGISTROS) -->
-    <div id="screen-detail" class="hidden min-h-screen flex flex-col">
-        <header class="p-6 flex items-center gap-4 sticky top-0 bg-[#0b0e14] z-40">
-            <button onclick="showScreen('screen-dash')"><i data-lucide="chevron-left"></i></button>
-            <div>
-                <h2 id="det-nombre" class="font-black text-xl">Equipo</h2>
-                <div class="flex items-center gap-2">
-                    <div id="det-led" class="status-led"></div>
-                    <span id="det-status-txt" class="text-[10px] font-bold text-slate-500 uppercase">Apagado</span>
+                <!-- Email -->
+                <div>
+                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Correo Electrónico</label>
+                    <input type="email" id="email" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none" placeholder="tu@correo.com">
                 </div>
-            </div>
-        </header>
 
-        <main class="p-6 space-y-6">
-            <!-- Card Principal Detalle -->
-            <div class="glass p-6 rounded-[32px] space-y-4">
-                <div class="flex justify-between items-start">
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Tiempo Total</p>
-                        <h3 id="det-timer" class="text-4xl font-black text-white mt-1">0h 0m 0s</h3>
-                    </div>
+                <!-- Password con Ojo -->
+                <div id="div-pass">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
                     <div class="relative">
-                        <button onclick="toggleMenu()" class="p-2 bg-slate-800 rounded-full"><i data-lucide="more-vertical" class="w-4 h-4"></i></button>
-                        <!-- Menú opciones -->
-                        <div id="menu-opts" class="hidden absolute right-0 mt-2 w-48 glass rounded-2xl p-2 shadow-2xl z-50">
-                            <button class="w-full text-left p-3 text-sm flex gap-2"><i data-lucide="edit-3" class="w-4 h-4"></i> Modificar</button>
-                            <div class="p-3 flex justify-between items-center border-t border-slate-800">
-                                <span class="text-sm">Habilitado</span>
-                                <input type="checkbox" id="check-enabled" onchange="cambiarHabilitacion()">
-                            </div>
-                            <button onclick="eliminarEquipoActual()" class="w-full text-left p-3 text-sm text-red-500 flex gap-2"><i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar</button>
-                        </div>
+                        <input type="password" id="pass" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none">
+                        <button onclick="toggleOjo()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-0.5 text-slate-600">
+                            <i data-lucide="eye" id="icono-ojo" class="w-5 h-5"></i>
+                        </button>
                     </div>
                 </div>
 
-                <!-- Alerta fuera de servicio -->
-                <div id="alert-fs" class="hidden bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-2xl flex justify-between items-center">
-                    <span class="text-yellow-500 text-xs font-bold flex gap-2 items-center"><i data-lucide="alert-triangle" class="w-4 h-4"></i> Fuera de servicio</span>
-                    <button class="text-yellow-500 text-[10px] font-black underline uppercase">Ver motivo</button>
-                </div>
+                <button onclick="ejecutarAccion()" id="btn-main" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-white shadow-xl shadow-blue-600/20 uppercase tracking-widest text-xs">Iniciar Sesión</button>
 
-                <button id="btn-encender" onclick="togglePower()" class="w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm btn-pwr">Encender</button>
-            </div>
-
-            <!-- Listado Registros -->
-            <div class="space-y-4">
-                <div class="flex justify-between items-center px-2">
-                    <h4 class="text-[10px] font-black text-slate-500 uppercase tracking-widest">Historial Registros</h4>
-                    <div class="flex gap-4">
-                        <button onclick="limpiarLogs()" class="text-red-500 text-[10px] font-black uppercase flex items-center gap-1"><i data-lucide="eraser" class="w-3 h-3"></i> Limpiar</button>
-                        <button onclick="abrirModalManual()" class="bg-slate-800 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-2"><i data-lucide="file-edit" class="w-3 h-3"></i> Manual</button>
-                    </div>
-                </div>
-                <div id="logs-container" class="space-y-2">
-                    <!-- Registros dinámicos -->
+                <!-- AYUDA Y MODOS -->
+                <div class="text-center pt-2 space-y-3">
+                    <p onclick="cambiarModo('registro')" id="link-registro" class="text-xs text-blue-400 font-bold cursor-pointer">¿Nueva Empresa? Regístrate</p>
+                    <p onclick="cambiarModo('olvido')" id="link-olvido" class="text-[10px] text-slate-600 cursor-pointer uppercase font-bold tracking-tighter">Olvidé mi contraseña</p>
+                    <p onclick="location.reload()" id="link-volver" class="hidden text-xs text-slate-400 font-bold cursor-pointer underline">Volver</p>
                 </div>
             </div>
-        </main>
+        </div>
     </div>
 
-    <!-- MODAL MANUAL -->
-    <div id="modal-manual" class="hidden fixed inset-0 z-[200] bg-black/90 backdrop-blur-sm flex items-center justify-center p-6">
-        <div class="glass w-full max-w-sm p-8 rounded-[40px] space-y-6">
-            <h3 class="text-xl font-black">Registro Manual</h3>
-            <div class="space-y-4">
-                <div class="flex gap-2">
-                    <button class="flex-1 bg-blue-600 p-4 rounded-xl font-bold text-xs">ENCENDIDO</button>
-                    <button class="flex-1 bg-slate-800 p-4 rounded-xl font-bold text-xs">APAGADO</button>
-                </div>
-                <input type="datetime-local" class="w-full bg-[#161a23] p-4 rounded-2xl outline-none text-sm">
-                <textarea class="w-full bg-[#161a23] p-4 rounded-2xl outline-none text-sm h-24" placeholder="Nota u observación..."></textarea>
-            </div>
-            <button onclick="cerrarModalManual()" class="w-full bg-blue-600 py-4 rounded-2xl font-black">GUARDAR REGISTRO</button>
+    <!-- 3. PANTALLA DASHBOARD (PARA JORGE Y ADMINS) -->
+    <div id="seccion-dash" class="hidden min-h-screen flex flex-col p-6">
+        <header class="flex justify-between items-center mb-10">
+            <h2 class="font-black text-blue-500 uppercase text-xs tracking-widest">Panel Activo</h2>
+            <button onclick="cerrarSesion()" class="text-red-500"><i data-lucide="power"></i></button>
+        </header>
+        <div class="bg-emerald-500/10 p-10 rounded-[40px] border border-emerald-500/20 text-center">
+            <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i>
+            <h3 class="text-2xl font-black text-white">Acceso Exitoso</h3>
+            <p id="txt-bienvenida" class="text-slate-400 text-sm mt-2">Bienvenido Dueño</p>
         </div>
     </div>
 
     <script>
-        // CONFIGURACIÓN (Tus credenciales de Supabase)
-        const _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        const _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        const _db = window.supabase.createClient(_U, _K);
+        // --- 1. CONFIGURACIÓN SIN ERRORES ---
+        var _URL = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
+        var _KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
+        var _dbClient = null;
+        var modo = 'login'; // login, registro, olvido
 
-        let miPerfil = null;
-        let equipos = [];
-        let equipoActual = null;
-        let esReg = false;
+        // Failsafe: Quitar pantalla azul sí o sí a los 2 segundos
+        setTimeout(function() {
+            document.getElementById('pantalla-carga').classList.add('hidden');
+            if(!_dbClient) document.getElementById('seccion-auth').classList.remove('hidden');
+        }, 2000);
 
-        window.onload = async () => {
+        window.onload = function() {
             lucide.createIcons();
-            const { data: { session } } = await _db.auth.getSession();
-            setTimeout(() => { document.getElementById('loader').classList.add('hidden'); }, 1000);
-            if (session) cargarPerfil(session.user.id);
-            else showScreen('screen-auth');
+            try {
+                if (window.supabase && window.supabase.createClient) {
+                    _dbClient = window.supabase.createClient(_URL, _KEY);
+                    chequearSesion();
+                }
+            } catch (e) { console.error("Error inicial"); }
         };
 
-        async function cargarPerfil(uid) {
-            const { data } = await _db.from('perfiles').select('*, empresas(*)').eq('id', uid).single();
-            if (data) {
-                miPerfil = data;
-                if(data.rol === 'admin') {
-                    document.getElementById('btn-invite').classList.remove('hidden');
-                    document.getElementById('btn-add-float').classList.remove('hidden');
-                }
-                showScreen('screen-dash');
-                fetchEquipos();
-            }
-        }
-
-        async function fetchEquipos() {
-            const { data } = await _db.from('equipos').select('*').eq('empresa_id', miPerfil.empresa_id);
-            equipos = data || [];
-            document.getElementById('count-txt').innerText = equipos.length + " EQUIPOS";
-            renderList();
-        }
-
-        function renderList() {
-            const cont = document.getElementById('list-container');
-            cont.innerHTML = equipos.length ? "" : '<div class="text-center py-20 text-slate-600"><i data-lucide="zap" class="mx-auto w-10 h-10 opacity-20 mb-4"></i>Sin equipos</div>';
-            equipos.forEach(e => {
-                const div = document.createElement('div');
-                div.onclick = () => verDetalle(e);
-                div.className = "glass p-6 rounded-[32px] flex justify-between items-center active:scale-95 transition-transform";
-                div.innerHTML = `
-                    <div class="flex items-center gap-4">
-                        <div class="status-led led-${e.estado}"></div>
-                        <div>
-                            <h4 class="font-black text-white text-lg">${e.nombre}</h4>
-                            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest">${e.categoria}</p>
-                        </div>
-                    </div>
-                    <i data-lucide="chevron-right" class="text-slate-700"></i>
-                `;
-                cont.appendChild(div);
-            });
-            lucide.createIcons();
-        }
-
-        function verDetalle(e) {
-            equipoActual = e;
-            document.getElementById('det-nombre').innerText = e.nombre;
-            actualizarInterfazDetalle();
-            showScreen('screen-detail');
-            cargarLogs();
-        }
-
-        async function togglePower() {
-            if (equipoActual.estado === 'error') return alert("Equipo deshabilitado por falla");
-            
-            const nEst = equipoActual.estado === 'on' ? 'off' : 'on';
-            playBeep(nEst);
-            
-            // 1. Guardar en logs
-            await _db.from('registros').insert([{ equipo_id: equipoActual.id, accion: nEst, empresa_id: miPerfil.empresa_id }]);
-            
-            // 2. Actualizar equipo
-            await _db.from('equipos').update({ estado: nEst }).eq('id', equipoActual.id);
-            
-            equipoActual.estado = nEst;
-            actualizarInterfazDetalle();
-            cargarLogs();
-        }
-
-        function actualizarInterfazDetalle() {
-            const btn = document.getElementById('btn-encender');
-            const led = document.getElementById('det-led');
-            const txt = document.getElementById('det-status-txt');
-            
-            led.className = "status-led led-" + equipoActual.estado;
-            txt.innerText = equipoActual.estado === 'on' ? 'Encendido' : equipoActual.estado === 'off' ? 'Apagado' : 'Fuera de Servicio';
-            
-            if (equipoActual.estado === 'on') {
-                btn.className = "w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm bg-red-500 text-white shadow-lg shadow-red-500/20";
-                btn.innerText = "Detener";
-            } else if (equipoActual.estado === 'error') {
-                btn.className = "w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm bg-slate-800 text-slate-600 grayscale cursor-not-allowed";
-                btn.innerText = "Bloqueado";
-                document.getElementById('alert-fs').classList.remove('hidden');
+        async function chequearSesion() {
+            const { data } = await _dbClient.auth.getSession();
+            if (data && data.session) {
+                entrar(data.session.user.email);
             } else {
-                btn.className = "w-full py-5 rounded-2xl font-black uppercase tracking-widest text-sm bg-emerald-500 text-white shadow-lg shadow-emerald-500/20";
-                btn.innerText = "Encender";
-                document.getElementById('alert-fs').classList.add('hidden');
+                document.getElementById('pantalla-carga').classList.add('hidden');
+                document.getElementById('seccion-auth').classList.remove('hidden');
             }
         }
 
-        async function cargarLogs() {
-            const { data } = await _db.from('registros').select('*').eq('equipo_id', equipoActual.id).order('fecha', { ascending: false });
-            const cont = document.getElementById('logs-container');
-            cont.innerHTML = data.map(l => `
-                <div class="card-log p-4 flex justify-between items-center">
-                    <div class="flex items-center gap-3">
-                        <div class="w-1.5 h-1.5 rounded-full ${l.accion==='on'?'bg-emerald-500':l.accion==='off'?'bg-red-500':'bg-yellow-500'}"></div>
-                        <div>
-                            <p class="text-xs font-bold text-white">${new Date(l.fecha).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</p>
-                            <p class="text-[9px] text-slate-600 font-bold uppercase">${new Date(l.fecha).toLocaleDateString()}</p>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[9px] font-black uppercase px-2 py-1 rounded bg-slate-800 ${l.accion==='on'?'text-emerald-500':'text-red-500'}">${l.accion}</span>
-                        <button class="text-slate-800"><i data-lucide="trash-2" class="w-3 h-3"></i></button>
-                    </div>
-                </div>
-            `).join('');
+        // --- 2. ACCIÓN PRINCIPAL (SOLUCIONADO) ---
+        async function ejecutarAuth() {
+            var email = document.getElementById('email').value.trim();
+            var pass = document.getElementById('pass').value.trim();
+            var empresa = document.getElementById('reg-empresa').value.trim();
+            var btn = document.getElementById('btn-main');
+
+            if (!email) return alert("Escribe tu correo");
+            if (modo !== 'olvido' && !pass) return alert("Escribe tu contraseña");
+
+            btn.innerText = "PROCESANDO...";
+            btn.disabled = true;
+
+            try {
+                if (modo === 'login') {
+                    const { error } = await _dbClient.auth.signInWithPassword({ email: email, password: pass });
+                    if (error) throw error;
+                    location.reload();
+                } 
+                else if (modo === 'registro') {
+                    if(!empresa) throw new Error("Escribe el nombre de tu empresa");
+                    const { data: nE, error: errE } = await _dbClient.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
+                    if (errE) throw errE;
+                    const { data: u, error: errU } = await _dbClient.auth.signUp({ email, password: pass });
+                    if (errU) throw errU;
+                    await _dbClient.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nE.id }]);
+                    alert("Empresa Creada. ¡Inicia Sesión!");
+                    location.reload();
+                }
+                else if (modo === 'olvido') {
+                    const { error } = await _dbClient.auth.resetPasswordForEmail(email);
+                    if (error) throw error;
+                    alert("Enlace de recuperación enviado al correo.");
+                    location.reload();
+                }
+            } catch (err) {
+                alert("AVISO: " + (err.message.includes("Invalid login") ? "Correo o contraseña incorrectos" : err.message));
+            } finally {
+                btn.disabled = false;
+                btn.innerText = modo === 'login' ? 'Iniciar Sesión' : modo === 'registro' ? 'Crear Empresa' : 'Enviar Enlace';
+            }
+        }
+
+        // --- 3. FUNCIONES DE INTERFAZ ---
+        function toggleOjo() {
+            var p = document.getElementById('pass');
+            var i = document.getElementById('icono-ojo');
+            if (p.type === "password") {
+                p.type = "text";
+                i.setAttribute('data-lucide', 'eye-off');
+            } else {
+                p.type = "password";
+                i.setAttribute('data-lucide', 'eye');
+            }
             lucide.createIcons();
         }
 
-        function playBeep(type) {
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.connect(gain); gain.connect(ctx.destination);
-            osc.frequency.value = type === 'on' ? 880 : 440;
-            osc.start();
-            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
-            osc.stop(ctx.currentTime + 0.1);
+        function cambiarModo(nuevoModo) {
+            modo = nuevoModo;
+            document.getElementById('div-nombre-emp').className = (modo === 'registro') ? '' : 'hidden';
+            document.getElementById('div-pass').className = (modo === 'olvido') ? 'hidden' : '';
+            document.getElementById('link-registro').className = (modo === 'login') ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden';
+            document.getElementById('link-olvido').className = (modo === 'login') ? 'text-[10px] text-slate-600 cursor-pointer uppercase font-bold tracking-tighter' : 'hidden';
+            document.getElementById('link-volver').className = (modo === 'login') ? 'hidden' : 'text-xs text-slate-400 font-bold cursor-pointer underline pt-4 block';
+            
+            var btn = document.getElementById('btn-main');
+            if(modo === 'registro') btn.innerText = "REGISTRAR MI EMPRESA";
+            if(modo === 'olvido') btn.innerText = "RECUPERAR MI CUENTA";
+            if(modo === 'login') btn.innerText = "INICIAR SESIÓN";
         }
 
-        // UI HELPERS
-        function showScreen(id) {
-            document.querySelectorAll('.screen, .min-h-screen').forEach(s => s.classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
+        function entrar(email) {
+            document.getElementById('pantalla-carga').classList.add('hidden');
+            document.getElementById('seccion-auth').classList.add('hidden');
+            document.getElementById('seccion-dash').classList.remove('hidden');
+            document.getElementById('txt-bienvenida').innerText = "Has entrado como: " + email;
         }
-        function toggleMenu() { document.getElementById('menu-opts').classList.toggle('hidden'); }
-        function verClave() {
-            const i = document.getElementById('pass');
-            i.type = i.type === 'password' ? 'text' : 'password';
-            lucide.createIcons();
-        }
-        function logout() { _db.auth.signOut(); location.reload(); }
-        // (Las funciones de invitar, registro manual y crear equipo ya están mapeadas en la lógica anterior)
+
+        function cerrarSesion() { _dbClient.auth.signOut(); location.reload(); }
     </script>
 </body>
 </html>
