@@ -3,142 +3,144 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro | Multi-Tenant</title>
+    <title>RunMonitor Pro</title>
     
-    <!-- Librerías Profesionales -->
+    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #020617; color: #f8fafc; overflow-x: hidden; }
-        .glass { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .block-cajon { background: rgba(255, 255, 255, 0.02); border-radius: 24px; padding: 15px; border: 1px dashed rgba(255,255,255,0.1); }
-        .status-led { width: 8px; height: 8px; border-radius: 50%; }
-        .led-on { background: #10b981; box-shadow: 0 0 10px #10b981; }
-        .led-off { background: #475569; }
-        .led-error { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
+        body { background: #020617; color: #f8fafc; font-family: sans-serif; }
+        .glass { background: rgba(30, 41, 59, 0.5); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1); }
         .hidden { display: none !important; }
-        input:focus { border-color: #3b82f6 !important; }
     </style>
 </head>
 <body>
 
-    <!-- PANTALLA CARGA -->
-    <div id="loader" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center">
-        <i data-lucide="bolt" class="w-12 h-12 text-blue-500 animate-pulse"></i>
+    <!-- PANTALLA DE CARGA -->
+    <div id="pantalla-carga" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center">
+        <div class="bg-blue-600 p-4 rounded-2xl animate-bounce mb-4">
+            <i data-lucide="bolt" class="text-white w-8 h-8"></i>
+        </div>
+        <p class="text-slate-500 text-sm">Iniciando...</p>
+        <div id="debug-text" class="text-[10px] text-red-900 mt-4"></div>
     </div>
 
-    <!-- PANTALLA: ACCESO (LOGIN / REGISTRO EMPRESA) -->
-    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
-        <div class="w-full max-w-sm">
-            <div class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-900/20">
-                <i data-lucide="zap" class="w-10 h-10 text-white"></i>
+    <!-- PANTALLA DE ENTRADA -->
+    <div id="seccion-login" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+        <h1 class="text-4xl font-bold mb-8">RunMonitor</h1>
+        
+        <div class="glass p-8 rounded-3xl w-full max-w-sm space-y-4">
+            <div id="div-empresa" class="hidden">
+                <label class="text-xs font-bold text-slate-500 uppercase">Nombre Empresa</label>
+                <input type="text" id="campo-empresa" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
             </div>
-            <h1 id="auth-title" class="text-4xl font-bold mb-2">RunMonitor</h1>
-            <p id="auth-subtitle" class="text-slate-400 mb-8 text-sm">Gestión Industrial para Empresas</p>
 
-            <div class="glass p-8 rounded-3xl space-y-4 text-left">
-                <div id="div-empresa" class="hidden">
-                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Nombre de tu Empresa</label>
-                    <input type="text" id="reg-empresa" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Correo</label>
-                    <input type="email" id="email" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-                </div>
-                <div>
-                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Contraseña</label>
-                    <div class="relative">
-                        <input type="password" id="pass" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
-                        <button onclick="togglePass()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-1 text-slate-500">
-                            <i data-lucide="eye" id="eye-icon" class="w-5 h-5"></i>
-                        </button>
-                    </div>
-                </div>
-                <button onclick="handleAuth()" id="btn-auth" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white shadow-lg transition-all">
-                    INICIAR SESIÓN
-                </button>
-                <div class="text-center pt-2 space-y-2">
-                    <p onclick="toggleRegisterMode()" id="toggle-text" class="text-sm text-blue-400 cursor-pointer">¿Quieres registrar tu empresa?</p>
-                    <p onclick="forgotPassword()" id="forgot-text" class="text-[10px] text-slate-500 cursor-pointer">Olvidé mi contraseña</p>
-                </div>
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase">Correo</label>
+                <input type="email" id="campo-email" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
             </div>
+
+            <div>
+                <label class="text-xs font-bold text-slate-500 uppercase">Contraseña</label>
+                <input type="password" id="campo-pass" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
+            </div>
+
+            <button onclick="btnEntrar()" id="main-btn" class="w-full bg-blue-600 py-4 rounded-xl font-bold shadow-lg">ENTRAR</button>
+            
+            <p onclick="irARegistro()" id="switch-txt" class="text-center text-sm text-blue-400 cursor-pointer pt-2">¿Registrar empresa nueva?</p>
         </div>
     </div>
 
-    <!-- PANTALLA: DASHBOARD PRINCIPAL -->
-    <div id="screen-dash" class="hidden min-h-screen flex flex-col">
-        <header class="p-4 flex justify-between items-center glass sticky top-0 z-50">
-            <div class="flex flex-col">
-                <h2 id="display-empresa" class="font-bold text-blue-400 text-lg leading-tight">Empresa</h2>
-                <span id="display-rol" class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">CARGANDO...</span>
-            </div>
-            <button onclick="logout()" class="p-2 text-red-500"><i data-lucide="log-out"></i></button>
+    <!-- PANTALLA DASHBOARD -->
+    <div id="seccion-dash" class="hidden min-h-screen flex flex-col">
+        <header class="p-4 flex justify-between glass">
+            <h2 class="font-bold text-blue-400">Dashboard</h2>
+            <button onclick="salir()" class="text-red-500 text-xs">CERRAR SESIÓN</button>
         </header>
-
-        <!-- Stats -->
-        <div class="p-4 grid grid-cols-2 gap-3">
-            <div class="glass p-4 rounded-2xl">
-                <p class="text-[10px] uppercase font-bold text-slate-500">Equipos Activos</p>
-                <h4 id="count-active" class="text-2xl font-bold text-emerald-500">0</h4>
-            </div>
-            <div class="glass p-4 rounded-2xl">
-                <p class="text-[10px] uppercase font-bold text-slate-500">Total Equipos</p>
-                <h4 id="count-total" class="text-2xl font-bold text-white">0</h4>
-            </div>
-        </div>
-
-        <!-- Dashboard Content -->
-        <main id="dashboard-content" class="p-4 space-y-6 pb-24">
-            <!-- Equipos y categorías cargados por JS -->
-        </main>
-
-        <!-- Botón Flotante para Admin -->
-        <button id="btn-add" onclick="abrirModalEquipo()" class="hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-600/30 z-50">
-            <i data-lucide="plus" class="text-white w-8 h-8"></i>
-        </button>
-    </div>
-
-    <!-- MODAL NUEVO EQUIPO -->
-    <div id="modal-equipo" class="hidden fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-6">
-        <div class="glass w-full max-w-sm p-6 rounded-3xl space-y-4">
-            <h3 class="text-xl font-bold">Nuevo Equipo</h3>
-            <input type="text" id="new-eq-name" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none" placeholder="Nombre del Equipo">
-            <input type="text" id="new-eq-cat" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none" placeholder="Categoría (Opcional)">
-            <div class="flex gap-2">
-                <button onclick="cerrarModal()" class="flex-1 p-4 rounded-xl bg-slate-800 font-bold">Cancelar</button>
-                <button onclick="crearEquipo()" class="flex-1 p-4 rounded-xl bg-blue-600 font-bold">Guardar</button>
-            </div>
+        <div class="p-10 text-center text-slate-500">
+            Conectado con éxito. <br> (Configurando tus equipos...)
         </div>
     </div>
 
     <script>
-        const URL = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        const _db = window.supabase.createClient(URL, KEY);
+        // DATOS LIMPIOS
+        var _U = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
+        var _K = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
+        
+        var _db;
+        var modoRegistro = false;
 
-        let esReg = false;
-        let miPerfil = null;
-        let equipos = [];
-        let timers = {};
+        // SEGURO DE VIDA: Forzar que se quite el azul a los 1.5 segundos
+        setTimeout(function() {
+            var loader = document.getElementById('pantalla-carga');
+            if (loader) loader.classList.add('hidden');
+            document.getElementById('seccion-login').classList.remove('hidden');
+        }, 1500);
 
-        window.onload = async () => {
+        window.onload = function() {
             lucide.createIcons();
-            const { data: { session } } = await _db.auth.getSession();
-            if (session) {
-                await initApp(session.user.id);
-            } else {
-                document.getElementById('loader').classList.add('hidden');
-                document.getElementById('screen-auth').classList.remove('hidden');
+            try {
+                if (window.supabase) {
+                    _db = window.supabase.createClient(_U, _K);
+                    chequearSesion();
+                } else {
+                    document.getElementById('debug-text').innerText = "Error: Librería no cargada.";
+                }
+            } catch (e) {
+                document.getElementById('debug-text').innerText = e.message;
             }
         };
 
-        async function initApp(uid) {
-            // Cargar Perfil y Empresa
-            const { data, error } = await _db.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', uid).single();
-            if (data) {
-                miPerfil = data;
-                document.getEle
+        async function chequearSesion() {
+            var { data } = await _db.auth.getSession();
+            if (data && data.session) {
+                mostrarDash();
+            }
+        }
+
+        async function btnEntrar() {
+            var email = document.getElementById('campo-email').value;
+            var pass = document.getElementById('campo-pass').value;
+            var empresa = document.getElementById('campo-empresa').value;
+
+            if (!email || !pass) return alert("Llena los datos");
+
+            try {
+                if (modoRegistro) {
+                    // REGISTRO
+                    var { data: nEmp, error: e1 } = await _db.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
+                    if (e1) throw e1;
+                    var { data: u, error: e2 } = await _db.auth.signUp({ email: email, password: pass });
+                    if (e2) throw e2;
+                    await _db.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nEmp.id }]);
+                    alert("Empresa creada. Inicia sesión.");
+                    location.reload();
+                } else {
+                    // LOGIN
+                    var { error } = await _db.auth.signInWithPassword({ email: email, password: pass });
+                    if (error) throw error;
+                    location.reload();
+                }
+            } catch (err) {
+                alert("Error: " + err.message);
+            }
+        }
+
+        function mostrarDash() {
+            document.getElementById('pantalla-carga').classList.add('hidden');
+            document.getElementById('seccion-login').classList.add('hidden');
+            document.getElementById('seccion-dash').classList.remove('hidden');
+        }
+
+        function irARegistro() {
+            modoRegistro = !modoRegistro;
+            document.getElementById('div-empresa').classList.toggle('hidden');
+            document.getElementById('main-btn').innerText = modoRegistro ? "REGISTRAR EMPRESA" : "ENTRAR";
+        }
+
+        function salir() { _db.auth.signOut(); location.reload(); }
+    </script>
+</body>
+</html>
