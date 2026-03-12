@@ -3,245 +3,142 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro | Industrial Control</title>
+    <title>RunMonitor Pro | Multi-Tenant</title>
     
-    <!-- Librerías de Alta Calidad -->
+    <!-- Librerías Profesionales -->
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.8/dist/umd/supabase.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
 
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
-        body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f8fafc; overflow-x: hidden; }
-        .glass { background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        body { font-family: 'Inter', sans-serif; background: #020617; color: #f8fafc; overflow-x: hidden; }
+        .glass { background: rgba(30, 41, 59, 0.4); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .block-cajon { background: rgba(255, 255, 255, 0.02); border-radius: 24px; padding: 15px; border: 1px dashed rgba(255,255,255,0.1); }
+        .status-led { width: 8px; height: 8px; border-radius: 50%; }
+        .led-on { background: #10b981; box-shadow: 0 0 10px #10b981; }
+        .led-off { background: #475569; }
+        .led-error { background: #f59e0b; box-shadow: 0 0 10px #f59e0b; }
         .hidden { display: none !important; }
-        .status-led { width: 10px; height: 10px; border-radius: 50%; }
-        .led-green { background: #10b981; box-shadow: 0 0 10px #10b981; }
-        .led-gray { background: #475569; }
         input:focus { border-color: #3b82f6 !important; }
     </style>
 </head>
 <body>
 
-    <!-- 1. PANTALLA DE CARGA (Con cierre automático) -->
+    <!-- PANTALLA CARGA -->
     <div id="loader" class="fixed inset-0 z-[100] bg-slate-950 flex flex-col items-center justify-center">
         <i data-lucide="bolt" class="w-12 h-12 text-blue-500 animate-pulse"></i>
-        <p class="mt-4 text-slate-400 text-sm font-medium">Sincronizando RunMonitor...</p>
     </div>
 
-    <!-- 2. SECCIÓN DE AUTENTICACIÓN -->
-    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
-        <div class="w-full max-w-sm text-center">
+    <!-- PANTALLA: ACCESO (LOGIN / REGISTRO EMPRESA) -->
+    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <div class="w-full max-w-sm">
             <div class="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-900/20">
                 <i data-lucide="zap" class="w-10 h-10 text-white"></i>
             </div>
             <h1 id="auth-title" class="text-4xl font-bold mb-2">RunMonitor</h1>
-            <p id="auth-subtitle" class="text-slate-400 mb-8 text-sm">Gestión de Equipos en Tiempo Real</p>
+            <p id="auth-subtitle" class="text-slate-400 mb-8 text-sm">Gestión Industrial para Empresas</p>
 
             <div class="glass p-8 rounded-3xl space-y-4 text-left">
-                <!-- Email -->
-                <div id="div-email">
-                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Email</label>
-                    <input type="email" id="email" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none focus:border-blue-500 transition-all">
+                <div id="div-empresa" class="hidden">
+                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Nombre de tu Empresa</label>
+                    <input type="text" id="reg-empresa" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
                 </div>
-
-                <!-- Password con Ojo -->
-                <div id="div-pass">
-                    <label id="label-pass" class="text-xs font-bold text-slate-500 uppercase ml-1">Contraseña</label>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Correo</label>
+                    <input type="email" id="email" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
+                </div>
+                <div>
+                    <label class="text-xs font-bold text-slate-500 uppercase ml-1">Contraseña</label>
                     <div class="relative">
-                        <input type="password" id="pass" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none focus:border-blue-500 transition-all">
-                        <button onclick="togglePasswordVisibility()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-1 text-slate-500">
+                        <input type="password" id="pass" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl mt-1 text-white outline-none">
+                        <button onclick="togglePass()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-1 text-slate-500">
                             <i data-lucide="eye" id="eye-icon" class="w-5 h-5"></i>
                         </button>
                     </div>
                 </div>
-
-                <button onclick="handleMainAction()" id="btn-main" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white shadow-lg transition-all">
+                <button onclick="handleAuth()" id="btn-auth" class="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl font-bold text-white shadow-lg transition-all">
                     INICIAR SESIÓN
                 </button>
-
-                <!-- Links dinámicos -->
-                <div id="auth-links" class="text-center space-y-3 pt-2">
-                    <p onclick="setAuthMode('register')" id="link-reg" class="text-sm text-blue-400 cursor-pointer font-medium">¿No tienes cuenta? Regístrate</p>
-                    <p onclick="setAuthMode('forgot')" id="link-forgot" class="text-[11px] text-slate-500 cursor-pointer hover:text-blue-300">Olvidé mi contraseña</p>
-                    <p onclick="location.reload()" id="link-back" class="hidden text-sm text-slate-400 cursor-pointer font-medium">Volver</p>
+                <div class="text-center pt-2 space-y-2">
+                    <p onclick="toggleRegisterMode()" id="toggle-text" class="text-sm text-blue-400 cursor-pointer">¿Quieres registrar tu empresa?</p>
+                    <p onclick="forgotPassword()" id="forgot-text" class="text-[10px] text-slate-500 cursor-pointer">Olvidé mi contraseña</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 3. SECCIÓN DASHBOARD -->
+    <!-- PANTALLA: DASHBOARD PRINCIPAL -->
     <div id="screen-dash" class="hidden min-h-screen flex flex-col">
         <header class="p-4 flex justify-between items-center glass sticky top-0 z-50">
-            <div class="flex items-center gap-3">
-                <div class="bg-blue-600 p-2 rounded-lg"><i data-lucide="bolt" class="w-5 h-5"></i></div>
-                <h2 class="font-bold text-lg">Panel de Control</h2>
+            <div class="flex flex-col">
+                <h2 id="display-empresa" class="font-bold text-blue-400 text-lg leading-tight">Empresa</h2>
+                <span id="display-rol" class="text-[9px] uppercase tracking-widest text-slate-500 font-bold">CARGANDO...</span>
             </div>
-            <button onclick="logout()" class="p-2 text-red-500 font-bold"><i data-lucide="log-out"></i></button>
+            <button onclick="logout()" class="p-2 text-red-500"><i data-lucide="log-out"></i></button>
         </header>
 
-        <div id="equipment-list" class="grid grid-cols-2 gap-3 p-4">
-            <!-- Los equipos se generan aquí -->
+        <!-- Stats -->
+        <div class="p-4 grid grid-cols-2 gap-3">
+            <div class="glass p-4 rounded-2xl">
+                <p class="text-[10px] uppercase font-bold text-slate-500">Equipos Activos</p>
+                <h4 id="count-active" class="text-2xl font-bold text-emerald-500">0</h4>
+            </div>
+            <div class="glass p-4 rounded-2xl">
+                <p class="text-[10px] uppercase font-bold text-slate-500">Total Equipos</p>
+                <h4 id="count-total" class="text-2xl font-bold text-white">0</h4>
+            </div>
+        </div>
+
+        <!-- Dashboard Content -->
+        <main id="dashboard-content" class="p-4 space-y-6 pb-24">
+            <!-- Equipos y categorías cargados por JS -->
+        </main>
+
+        <!-- Botón Flotante para Admin -->
+        <button id="btn-add" onclick="abrirModalEquipo()" class="hidden fixed bottom-6 right-6 w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center shadow-xl shadow-blue-600/30 z-50">
+            <i data-lucide="plus" class="text-white w-8 h-8"></i>
+        </button>
+    </div>
+
+    <!-- MODAL NUEVO EQUIPO -->
+    <div id="modal-equipo" class="hidden fixed inset-0 z-[200] bg-black/80 flex items-center justify-center p-6">
+        <div class="glass w-full max-w-sm p-6 rounded-3xl space-y-4">
+            <h3 class="text-xl font-bold">Nuevo Equipo</h3>
+            <input type="text" id="new-eq-name" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none" placeholder="Nombre del Equipo">
+            <input type="text" id="new-eq-cat" class="w-full bg-slate-900 border border-slate-700 p-4 rounded-xl text-white outline-none" placeholder="Categoría (Opcional)">
+            <div class="flex gap-2">
+                <button onclick="cerrarModal()" class="flex-1 p-4 rounded-xl bg-slate-800 font-bold">Cancelar</button>
+                <button onclick="crearEquipo()" class="flex-1 p-4 rounded-xl bg-blue-600 font-bold">Guardar</button>
+            </div>
         </div>
     </div>
 
     <script>
-        // --- CONFIGURACIÓN SEGURA ---
-        const _URL = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        const _KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        const _db = window.supabase.createClient(_URL, _KEY);
+        const URL = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
+        const KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
+        const _db = window.supabase.createClient(URL, KEY);
 
-        let currentMode = 'login'; 
-        let activeTimers = {};
+        let esReg = false;
+        let miPerfil = null;
+        let equipos = [];
+        let timers = {};
 
-        window.onload = function() {
+        window.onload = async () => {
             lucide.createIcons();
-            
-            // Detectar si el usuario viene del correo de recuperación
-            _db.auth.onAuthStateChange((event, session) => {
-                if (event === "PASSWORD_RECOVERY") {
-                    setAuthMode('reset');
-                }
-            });
-
-            // Quitar loader tras 1.5s sí o sí
-            setTimeout(() => {
+            const { data: { session } } = await _db.auth.getSession();
+            if (session) {
+                await initApp(session.user.id);
+            } else {
                 document.getElementById('loader').classList.add('hidden');
                 document.getElementById('screen-auth').classList.remove('hidden');
-            }, 1500);
+            }
         };
 
-        async function handleMainAction() {
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('pass').value.trim();
-            const btn = document.getElementById('btn-main');
-
-            try {
-                btn.disabled = true;
-                btn.innerText = "PROCESANDO...";
-
-                if (currentMode === 'login') {
-                    const { error } = await _db.auth.signInWithPassword({ email, password });
-                    if (error) throw error;
-                    showDashboard();
-                } 
-                else if (currentMode === 'register') {
-                    const { error } = await _db.auth.signUp({ email, password });
-                    if (error) throw error;
-                    alert("¡Cuenta creada! Ya puedes iniciar sesión.");
-                    location.reload();
-                } 
-                else if (currentMode === 'forgot') {
-                    const { error } = await _db.auth.resetPasswordForEmail(email);
-                    if (error) throw error;
-                    alert("Enlace enviado. Revisa tu correo electrónico.");
-                }
-                else if (currentMode === 'reset') {
-                    const { error } = await _db.auth.updateUser({ password });
-                    if (error) throw error;
-                    alert("Contraseña actualizada con éxito.");
-                    location.reload();
-                }
-            } catch (err) {
-                alert("Aviso: " + (err.message.includes("Invalid login") ? "Datos incorrectos" : err.message));
-            } finally {
-                btn.disabled = false;
-                btn.innerText = (currentMode === 'login') ? "INICIAR SESIÓN" : (currentMode === 'register') ? "CREAR CUENTA" : "ENVIAR ENLACE";
-                if(currentMode === 'reset') btn.innerText = "GUARDAR CLAVE";
-            }
-        }
-
-        function setAuthMode(mode) {
-            currentMode = mode;
-            const title = document.getElementById('auth-title');
-            const btn = document.getElementById('btn-main');
-            
-            // UI Reset
-            document.getElementById('div-email').classList.remove('hidden');
-            document.getElementById('div-pass').classList.remove('hidden');
-            document.getElementById('auth-links').classList.remove('hidden');
-            document.getElementById('link-back').classList.remove('hidden');
-
-            if (mode === 'register') {
-                title.innerText = "Registro";
-                btn.innerText = "CREAR CUENTA";
-            } else if (mode === 'forgot') {
-                title.innerText = "Recuperar";
-                document.getElementById('div-pass').classList.add('hidden');
-                btn.innerText = "ENVIAR ENLACE";
-            } else if (mode === 'reset') {
-                title.innerText = "Nueva Clave";
-                document.getElementById('div-email').classList.add('hidden');
-                document.getElementById('auth-links').classList.add('hidden');
-                document.getElementById('label-pass').innerText = "Escribe tu nueva clave";
-                btn.innerText = "GUARDAR CLAVE";
-            }
-        }
-
-        function togglePasswordVisibility() {
-            const input = document.getElementById('pass');
-            const icon = document.getElementById('eye-icon');
-            if (input.type === 'password') {
-                input.type = 'text';
-                icon.setAttribute('data-lucide', 'eye-off');
-            } else {
-                input.type = 'password';
-                icon.setAttribute('data-lucide', 'eye');
-            }
-            lucide.createIcons();
-        }
-
-        function showDashboard() {
-            document.getElementById('screen-auth').classList.add('hidden');
-            document.getElementById('screen-dash').classList.remove('hidden');
-            renderEquipment();
-        }
-
-        function renderEquipment() {
-            const list = document.getElementById('equipment-list');
-            const items = [{id:1, n:"Generador #01"}, {id:2, n:"Compresor A2"}];
-            list.innerHTML = "";
-            items.forEach(eq => {
-                const div = document.createElement('div');
-                div.className = "glass p-4 rounded-3xl flex flex-col gap-2";
-                div.innerHTML = `
-                    <div class="status-led led-gray" id="led-${eq.id}"></div>
-                    <p class="text-[10px] text-slate-500 font-bold uppercase">${eq.n}</p>
-                    <h3 class="text-xl font-mono text-blue-400" id="timer-${eq.id}">00:00:00</h3>
-                    <button onclick="runTimer(${eq.id})" id="btn-${eq.id}" class="w-full py-3 rounded-xl font-bold text-[10px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">ENCENDER</button>
-                `;
-                list.appendChild(div);
-            });
-        }
-
-        function runTimer(id) {
-            const btn = document.getElementById(`btn-${id}`);
-            const led = document.getElementById(`led-${id}`);
-            const timer = document.getElementById(`timer-${id}`);
-
-            if (activeTimers[id]) {
-                clearInterval(activeTimers[id]);
-                delete activeTimers[id];
-                btn.innerText = "ENCENDER";
-                btn.className = "w-full py-3 rounded-xl font-bold text-[10px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20";
-                led.className = "status-led led-gray";
-            } else {
-                btn.innerText = "DETENER";
-                btn.className = "w-full py-3 rounded-xl font-bold text-[10px] bg-red-500/10 text-red-500 border border-red-500/20";
-                led.className = "status-led led-green";
-                activeTimers[id] = setInterval(() => {
-                    let parts = timer.innerText.split(':').map(Number);
-                    let s = parts[2] + 1; let m = parts[1]; let h = parts[0];
-                    if(s>=60){s=0;m++} if(m>=60){m=0;h++}
-                    timer.innerText = [h,m,s].map(v => String(v).padStart(2,'0')).join(':');
-                }, 1000);
-            }
-        }
-
-        function logout() {
-            _db.auth.signOut();
-            location.reload();
-        }
-    </script>
-</body>
-</html>
+        async function initApp(uid) {
+            // Cargar Perfil y Empresa
+            const { data, error } = await _db.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', uid).single();
+            if (data) {
+                miPerfil = data;
+                document.getEle
