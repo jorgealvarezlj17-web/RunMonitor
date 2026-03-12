@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Master</title>
+    <title>RunMonitor Pro</title>
     
-    <!-- Librerías Externas -->
+    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -21,26 +21,26 @@
 </head>
 <body>
 
-    <!-- PANTALLA DE CARGA -->
+    <!-- 1. CARGA -->
     <div id="loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
         <div class="p-4 bg-blue-600 rounded-3xl animate-bounce mb-4 shadow-2xl shadow-blue-500/40">
             <i data-lucide="bolt" class="text-white w-10 h-10"></i>
         </div>
-        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Iniciando Sistema...</p>
+        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sincronizando...</p>
     </div>
 
-    <!-- PANTALLA AUTH -->
+    <!-- 2. LOGIN / REGISTRO / OLVIDO -->
     <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
         <div class="w-full max-w-sm text-center">
-            <h1 class="text-5xl font-black mb-1 tracking-tighter italic">Run<span class="text-blue-500">Monitor</span></h1>
-            <p id="auth-tag" class="text-slate-500 mb-10 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión de Activos</p>
+            <h1 class="text-5xl font-black mb-1 tracking-tighter italic text-white">Run<span class="text-blue-500">Monitor</span></h1>
+            <p id="auth-tag" class="text-slate-500 mb-10 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
 
             <div class="glass p-8 rounded-[40px] space-y-4 text-left shadow-2xl">
                 
-                <!-- Nombre Empresa (Solo en Registro) -->
+                <!-- Nombre Empresa (Solo Registro) -->
                 <div id="group-empresa" class="hidden">
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de tu Empresa</label>
-                    <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl text-white outline-none" placeholder="Ej: Constructora ABC">
+                    <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl text-white outline-none">
                 </div>
 
                 <!-- Email -->
@@ -49,8 +49,8 @@
                     <input type="email" id="val-email" class="w-full p-4 rounded-2xl text-white outline-none" placeholder="tu@correo.com">
                 </div>
 
-                <!-- Password -->
-                <div>
+                <!-- Password (Se oculta en modo Olvido) -->
+                <div id="group-pass">
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
                     <div class="relative">
                         <input type="password" id="val-pass" class="w-full p-4 rounded-2xl text-white outline-none">
@@ -60,176 +60,122 @@
                     </div>
                 </div>
 
-                <!-- BOTÓN PRINCIPAL -->
-                <button onclick="ejecutarAuth()" id="btn-auth" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-white shadow-xl shadow-blue-600/20 uppercase tracking-widest text-xs">
-                    Entrar al Sistema
-                </button>
+                <button onclick="ejecutarAuth()" id="btn-auth" class="w-full bg-blue-600 py-5 rounded-2xl font-black text-white shadow-xl uppercase tracking-widest text-xs">Entrar</button>
 
                 <div class="text-center pt-2 space-y-3">
-                    <p onclick="cambiarModo('registro')" id="btn-switch-reg" class="text-xs text-blue-400 font-bold cursor-pointer hover:underline">¿Registrar Empresa Nueva?</p>
-                    <p onclick="cambiarModo('olvido')" id="btn-switch-forgot" class="text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter hover:text-slate-400">Olvidé mi contraseña</p>
-                    <button onclick="location.reload()" id="btn-volver" class="hidden text-xs text-slate-500 font-bold underline w-full">Volver</button>
+                    <p onclick="cambiarModo('registro')" id="link-reg" class="text-xs text-blue-400 font-bold cursor-pointer">¿Empresa nueva? Regístrate</p>
+                    <p onclick="cambiarModo('olvido')" id="link-forgot" class="text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter">Olvidé mi contraseña</p>
+                    <p onclick="location.reload()" id="link-back" class="hidden text-xs text-slate-500 font-bold underline">Volver al inicio</p>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- PANTALLA DASHBOARD -->
+    <!-- 3. PANEL DASHBOARD -->
     <div id="screen-dash" class="hidden min-h-screen flex flex-col p-6">
         <header class="flex justify-between items-center mb-8">
             <div>
-                <h2 id="dash-company" class="font-black text-white text-2xl tracking-tight">RunMonitor</h2>
-                <span id="dash-role" class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Cargando...</span>
+                <h2 id="dash-company" class="font-black text-white text-2xl tracking-tight italic">RunMonitor</h2>
+                <span id="dash-role" class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Master</span>
             </div>
-            <button onclick="cerrarSesion()" class="text-red-500 p-2"><i data-lucide="power"></i></button>
+            <button onclick="cerrarSesion()" class="text-red-500"><i data-lucide="power"></i></button>
         </header>
-
-        <div id="msg-bienvenida" class="bg-blue-600/10 p-8 rounded-[40px] border border-blue-500/20 text-center">
-            <i data-lucide="check-circle" class="w-12 h-12 text-blue-500 mx-auto mb-4"></i>
-            <h3 class="text-xl font-black text-white">¡Sesión Iniciada!</h3>
-            <p id="dash-email" class="text-slate-400 text-sm mt-1"></p>
+        <div class="bg-blue-600/10 p-10 rounded-[40px] border border-blue-500/20 text-center">
+            <i data-lucide="shield-check" class="w-12 h-12 text-blue-500 mx-auto mb-4"></i>
+            <h3 class="text-xl font-black text-white italic">Acceso de Dueño</h3>
+            <p id="dash-email" class="text-slate-400 text-sm mt-2 font-bold"></p>
         </div>
     </div>
 
     <script>
-        // CONFIGURACIÓN (Protegida contra duplicados)
         var _URL_S = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
         var _KEY_S = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        
-        var _dbInstancia = null;
-        var _modoAuth = 'login'; // login, registro, olvido
+        var _db = null;
+        var _modo = 'login';
 
-        // SEGURO DE VIDA: Si en 2 segundos sigue el azul, lo quitamos sí o sí
-        setTimeout(function() {
-            var l = document.getElementById('loader');
-            if(l) l.classList.add('hidden');
-            document.getElementById('screen-auth').classList.remove('hidden');
-        }, 2000);
+        // Quitar loader tras 1.5s
+        setTimeout(function(){ document.getElementById('loader').classList.add('hidden'); }, 1500);
 
         window.onload = function() {
-            try {
-                if (window.lucide) lucide.createIcons();
-                
-                // Inicializar Supabase sin usar la palabra "supabase" para evitar errores
-                if (window.supabase && typeof window.supabase.createClient === 'function') {
-                    _dbInstancia = window.supabase.createClient(_URL_S, _KEY_S);
-                    verificarSesionActual();
-                }
-            } catch (err) {
-                console.error("Error al arrancar:", err);
+            lucide.createIcons();
+            if (window.supabase) {
+                _db = window.supabase.createClient(_URL_S, _KEY_S);
+                chequearSesion();
             }
         };
 
-        async function verificarSesionActual() {
-            var { data } = await _dbInstancia.auth.getSession();
+        async function chequearSesion() {
+            var { data } = await _db.auth.getSession();
             if (data && data.session) {
-                cargarPerfil(data.session.user);
+                cargarDashboard(data.session.user);
+            } else {
+                document.getElementById('screen-auth').classList.remove('hidden');
             }
         }
 
-        async function cargarPerfil(user) {
-            // Buscamos tu rango y empresa en la tabla perfiles
-            var { data, error } = await _dbInstancia.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', user.id).single();
-            
-            document.getElementById('loader').classList.add('hidden');
+        async function cargarDashboard(user) {
+            var { data } = await _db.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', user.id).single();
             document.getElementById('screen-auth').classList.add('hidden');
             document.getElementById('screen-dash').classList.remove('hidden');
-            
-            if (data) {
+            document.getElementById('dash-email').innerText = user.email;
+            if(data) {
                 document.getElementById('dash-company').innerText = data.empresas.nombre_empresa;
                 document.getElementById('dash-role').innerText = data.rol;
-                document.getElementById('dash-email').innerText = user.email;
-            } else {
-                document.getElementById('dash-email').innerText = user.email + " (Perfil no configurado)";
             }
         }
 
-        // --- FUNCIÓN QUE HACE FUNCIONAR LOS BOTONES ---
         async function ejecutarAuth() {
-            if (!_dbInstancia) return alert("El sistema no pudo conectar con la base de datos. Revisa tu internet.");
-
             var email = document.getElementById('val-email').value.trim();
             var pass = document.getElementById('val-pass').value.trim();
-            var empresa = document.getElementById('val-empresa').value.trim();
-            var btn = document.getElementById('btn-auth');
+            var emp = document.getElementById('val-empresa').value.trim();
 
             if (!email) return alert("Escribe tu correo");
-            if (_modoAuth !== 'olvido' && !pass) return alert("Escribe tu contraseña");
-
-            btn.innerText = "PROCESANDO...";
-            btn.disabled = true;
+            if (_modo !== 'olvido' && !pass) return alert("Escribe tu contraseña");
 
             try {
-                if (_modoAuth === 'login') {
-                    const { error } = await _dbInstancia.auth.signInWithPassword({ email: email, password: pass });
+                if (_modo === 'login') {
+                    const { error } = await _db.auth.signInWithPassword({ email, password: pass });
                     if (error) throw error;
                     location.reload();
                 } 
-                else if (_modoAuth === 'registro') {
-                    if (!empresa) throw new Error("Escribe el nombre de tu empresa");
-                    
-                    // 1. Crear Empresa
-                    const { data: nEmp, error: errEmp } = await _dbInstancia.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
-                    if (errEmp) throw errEmp;
-                    
-                    // 2. Crear Usuario
-                    const { data: u, error: errU } = await _dbInstancia.auth.signUp({ email: email, password: pass });
-                    if (errU) throw errU;
-                    
-                    // 3. Crear Perfil
-                    await _dbInstancia.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nEmp.id }]);
-                    
-                    alert("¡EMPRESA REGISTRADA! Ya puedes entrar.");
+                else if (_modo === 'registro') {
+                    if (!emp) return alert("Nombre de empresa obligatorio");
+                    const { data: nE, error: e1 } = await _db.from('empresas').insert([{ nombre_empresa: emp }]).select().single();
+                    if (e1) throw e1;
+                    const { data: u, error: e2 } = await _db.auth.signUp({ email, password: pass });
+                    if (e2) throw e2;
+                    await _db.from('perfiles').insert([{ id: u.user.id, email, rol: 'admin', empresa_id: nE.id }]);
+                    alert("¡Registrado! Revisa tu bandeja de SPAM.");
                     location.reload();
                 }
-                else if (_modoAuth === 'olvido') {
-                    const { error } = await _dbInstancia.auth.resetPasswordForEmail(email);
+                else if (_modo === 'olvido') {
+                    const { error } = await _db.auth.resetPasswordForEmail(email);
                     if (error) throw error;
-                    alert("Enlace enviado al correo.");
+                    alert("Si el correo está registrado, recibirás un enlace. Revisa SPAM.");
                     location.reload();
                 }
-            } catch (e) {
-                alert("AVISO: " + (e.message.includes("Invalid login") ? "Correo o clave incorrectos. Usa el ojo para revisar." : e.message));
-            } finally {
-                btn.disabled = false;
-                actualizarTextoBoton();
-            }
+            } catch (e) { alert(e.message); }
         }
 
-        // --- UTILIDADES ---
+        function cambiarModo(m) {
+            _modo = m;
+            document.getElementById('group-empresa').className = (m === 'registro' ? '' : 'hidden');
+            document.getElementById('group-pass').className = (m === 'olvido' ? 'hidden' : '');
+            document.getElementById('link-reg').className = (m === 'login' ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden');
+            document.getElementById('link-forgot').className = (m === 'login' ? 'text-[10px] text-slate-600 font-bold uppercase tracking-tighter' : 'hidden');
+            document.getElementById('link-back').className = (m === 'login' ? 'hidden' : 'text-xs text-slate-500 font-bold underline block pt-4');
+            
+            var b = document.getElementById('btn-auth');
+            b.innerText = m === 'registro' ? 'Crear Empresa' : m === 'olvido' ? 'Recuperar Cuenta' : 'Iniciar Sesión';
+        }
+
         function verPass() {
-            var input = document.getElementById('val-pass');
-            var icon = document.getElementById('ojo-icon');
-            if (input.type === "password") {
-                input.type = "text";
-                icon.setAttribute('data-lucide', 'eye-off');
-            } else {
-                input.type = "password";
-                icon.setAttribute('data-lucide', 'eye');
-            }
+            var i = document.getElementById('val-pass');
+            i.type = i.type === 'password' ? 'text' : 'password';
             lucide.createIcons();
         }
 
-        function cambiarModo(nuevoModo) {
-            _modoAuth = nuevoModo;
-            document.getElementById('group-empresa').className = (nuevoModo === 'registro') ? '' : 'hidden';
-            document.getElementById('btn-switch-reg').className = (nuevoModo === 'login') ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden';
-            document.getElementById('btn-switch-forgot').className = (nuevoModo === 'login') ? 'text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter' : 'hidden';
-            document.getElementById('btn-volver').className = (nuevoModo === 'login') ? 'hidden' : 'text-xs text-slate-500 font-bold underline block pt-4';
-            actualizarTextoBoton();
-        }
-
-        function actualizarTextoBoton() {
-            var b = document.getElementById('btn-auth');
-            if (_modoAuth === 'login') b.innerText = "INICIAR SESIÓN";
-            if (_modoAuth === 'registro') b.innerText = "REGISTRAR MI EMPRESA";
-            if (_modoAuth === 'olvido') b.innerText = "RECUPERAR MI CUENTA";
-        }
-
-        function cerrarSesion() {
-            _dbInstancia.auth.signOut();
-            location.reload();
-        }
+        function cerrarSesion() { _db.auth.signOut(); location.reload(); }
     </script>
 </body>
 </html>
