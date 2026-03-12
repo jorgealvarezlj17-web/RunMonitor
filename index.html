@@ -3,199 +3,233 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>RunMonitor Pro</title>
+    <title>RunMonitor Master</title>
     
-    <!-- Librerías -->
+    <!-- Librerías Externas -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;900&display=swap');
-        body { font-family: 'Inter', sans-serif; background: #0b0e14; color: #f8fafc; overflow: hidden; }
-        .glass { background: rgba(22, 26, 35, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0b0e14; color: #f8fafc; overflow: hidden; }
+        .glass { background: rgba(22, 26, 35, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
         .hidden { display: none !important; }
-        input:focus { border-color: #3b82f6 !important; background: rgba(30, 41, 59, 0.8) !important; }
+        input { background: #161a23 !important; border: 1px solid #1e293b !important; }
+        input:focus { border-color: #3b82f6 !important; outline: none; }
     </style>
 </head>
 <body>
 
-    <!-- 1. PANTALLA DE CARGA (Failsafe 2 seg) -->
-    <div id="pantalla-carga" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
-        <div class="p-4 bg-blue-600 rounded-3xl animate-bounce shadow-2xl shadow-blue-500/20">
+    <!-- PANTALLA DE CARGA -->
+    <div id="loader" class="fixed inset-0 z-[100] bg-[#0b0e14] flex flex-col items-center justify-center">
+        <div class="p-4 bg-blue-600 rounded-3xl animate-bounce mb-4 shadow-2xl shadow-blue-500/40">
             <i data-lucide="bolt" class="text-white w-10 h-10"></i>
         </div>
-        <p class="mt-4 text-slate-500 text-[10px] uppercase font-bold tracking-widest">Sincronizando...</p>
+        <p class="text-slate-500 text-[10px] uppercase font-bold tracking-widest">Iniciando Sistema...</p>
     </div>
 
-    <!-- 2. SECCIÓN DE ACCESO (Login / Registro / Olvido) -->
-    <div id="seccion-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
+    <!-- PANTALLA AUTH -->
+    <div id="screen-auth" class="hidden min-h-screen flex flex-col items-center justify-center p-6">
         <div class="w-full max-w-sm text-center">
             <h1 class="text-5xl font-black mb-1 tracking-tighter italic">Run<span class="text-blue-500">Monitor</span></h1>
-            <p id="auth-sub" class="text-slate-500 mb-8 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión Industrial</p>
+            <p id="auth-tag" class="text-slate-500 mb-10 text-[10px] font-bold uppercase tracking-[0.2em]">Gestión de Activos</p>
 
             <div class="glass p-8 rounded-[40px] space-y-4 text-left shadow-2xl">
                 
-                <!-- Campo Nombre Empresa (Solo Registro) -->
-                <div id="div-nombre-emp" class="hidden">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de Empresa</label>
-                    <input type="text" id="reg-empresa" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none" placeholder="Ej: Minera Norte">
+                <!-- Nombre Empresa (Solo en Registro) -->
+                <div id="group-empresa" class="hidden">
+                    <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Nombre de tu Empresa</label>
+                    <input type="text" id="val-empresa" class="w-full p-4 rounded-2xl text-white outline-none" placeholder="Ej: Constructora ABC">
                 </div>
 
                 <!-- Email -->
                 <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Correo Electrónico</label>
-                    <input type="email" id="email" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none" placeholder="tu@correo.com">
+                    <input type="email" id="val-email" class="w-full p-4 rounded-2xl text-white outline-none" placeholder="tu@correo.com">
                 </div>
 
-                <!-- Password con Ojo -->
-                <div id="div-pass">
+                <!-- Password -->
+                <div>
                     <label class="text-[10px] font-bold text-slate-500 uppercase ml-2 mb-1 block">Contraseña</label>
                     <div class="relative">
-                        <input type="password" id="pass" class="w-full bg-[#161a23] border border-slate-800 p-4 rounded-2xl text-white outline-none">
-                        <button onclick="toggleOjo()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-0.5 text-slate-600">
-                            <i data-lucide="eye" id="icono-ojo" class="w-5 h-5"></i>
+                        <input type="password" id="val-pass" class="w-full p-4 rounded-2xl text-white outline-none">
+                        <button onclick="verPass()" class="absolute right-4 top-1/2 -translate-y-1/2 mt-0.5 text-slate-600">
+                            <i data-lucide="eye" id="ojo-icon" class="w-5 h-5"></i>
                         </button>
                     </div>
                 </div>
 
-                <button onclick="ejecutarAccion()" id="btn-main" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-white shadow-xl shadow-blue-600/20 uppercase tracking-widest text-xs">Iniciar Sesión</button>
+                <!-- BOTÓN PRINCIPAL -->
+                <button onclick="ejecutarAuth()" id="btn-auth" class="w-full bg-blue-600 hover:bg-blue-500 py-5 rounded-2xl font-black text-white shadow-xl shadow-blue-600/20 uppercase tracking-widest text-xs">
+                    Entrar al Sistema
+                </button>
 
-                <!-- AYUDA Y MODOS -->
                 <div class="text-center pt-2 space-y-3">
-                    <p onclick="cambiarModo('registro')" id="link-registro" class="text-xs text-blue-400 font-bold cursor-pointer">¿Nueva Empresa? Regístrate</p>
-                    <p onclick="cambiarModo('olvido')" id="link-olvido" class="text-[10px] text-slate-600 cursor-pointer uppercase font-bold tracking-tighter">Olvidé mi contraseña</p>
-                    <p onclick="location.reload()" id="link-volver" class="hidden text-xs text-slate-400 font-bold cursor-pointer underline">Volver</p>
+                    <p onclick="cambiarModo('registro')" id="btn-switch-reg" class="text-xs text-blue-400 font-bold cursor-pointer hover:underline">¿Registrar Empresa Nueva?</p>
+                    <p onclick="cambiarModo('olvido')" id="btn-switch-forgot" class="text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter hover:text-slate-400">Olvidé mi contraseña</p>
+                    <button onclick="location.reload()" id="btn-volver" class="hidden text-xs text-slate-500 font-bold underline w-full">Volver</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 3. PANTALLA DASHBOARD (PARA JORGE Y ADMINS) -->
-    <div id="seccion-dash" class="hidden min-h-screen flex flex-col p-6">
-        <header class="flex justify-between items-center mb-10">
-            <h2 class="font-black text-blue-500 uppercase text-xs tracking-widest">Panel Activo</h2>
-            <button onclick="cerrarSesion()" class="text-red-500"><i data-lucide="power"></i></button>
+    <!-- PANTALLA DASHBOARD -->
+    <div id="screen-dash" class="hidden min-h-screen flex flex-col p-6">
+        <header class="flex justify-between items-center mb-8">
+            <div>
+                <h2 id="dash-company" class="font-black text-white text-2xl tracking-tight">RunMonitor</h2>
+                <span id="dash-role" class="text-[9px] font-bold text-blue-500 uppercase tracking-widest">Cargando...</span>
+            </div>
+            <button onclick="cerrarSesion()" class="text-red-500 p-2"><i data-lucide="power"></i></button>
         </header>
-        <div class="bg-emerald-500/10 p-10 rounded-[40px] border border-emerald-500/20 text-center">
-            <i data-lucide="check-circle" class="w-12 h-12 text-emerald-500 mx-auto mb-4"></i>
-            <h3 class="text-2xl font-black text-white">Acceso Exitoso</h3>
-            <p id="txt-bienvenida" class="text-slate-400 text-sm mt-2">Bienvenido Dueño</p>
+
+        <div id="msg-bienvenida" class="bg-blue-600/10 p-8 rounded-[40px] border border-blue-500/20 text-center">
+            <i data-lucide="check-circle" class="w-12 h-12 text-blue-500 mx-auto mb-4"></i>
+            <h3 class="text-xl font-black text-white">¡Sesión Iniciada!</h3>
+            <p id="dash-email" class="text-slate-400 text-sm mt-1"></p>
         </div>
     </div>
 
     <script>
-        // --- 1. CONFIGURACIÓN SIN ERRORES ---
-        var _URL = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
-        var _KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
-        var _dbClient = null;
-        var modo = 'login'; // login, registro, olvido
+        // CONFIGURACIÓN (Protegida contra duplicados)
+        var _URL_S = "https://yfsyeziyhlmzrsphefss.supabase.co".trim();
+        var _KEY_S = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlmc3lleml5aGxtenJzcGhlZnNzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNTQxMjQsImV4cCI6MjA4ODgzMDEyNH0.MqXGssHfSHkvRDNG2v4zmguXbs0A_HLTAv5-S3C6i0E".trim();
+        
+        var _dbInstancia = null;
+        var _modoAuth = 'login'; // login, registro, olvido
 
-        // Failsafe: Quitar pantalla azul sí o sí a los 2 segundos
+        // SEGURO DE VIDA: Si en 2 segundos sigue el azul, lo quitamos sí o sí
         setTimeout(function() {
-            document.getElementById('pantalla-carga').classList.add('hidden');
-            if(!_dbClient) document.getElementById('seccion-auth').classList.remove('hidden');
+            var l = document.getElementById('loader');
+            if(l) l.classList.add('hidden');
+            document.getElementById('screen-auth').classList.remove('hidden');
         }, 2000);
 
         window.onload = function() {
-            lucide.createIcons();
             try {
-                if (window.supabase && window.supabase.createClient) {
-                    _dbClient = window.supabase.createClient(_URL, _KEY);
-                    chequearSesion();
+                if (window.lucide) lucide.createIcons();
+                
+                // Inicializar Supabase sin usar la palabra "supabase" para evitar errores
+                if (window.supabase && typeof window.supabase.createClient === 'function') {
+                    _dbInstancia = window.supabase.createClient(_URL_S, _KEY_S);
+                    verificarSesionActual();
                 }
-            } catch (e) { console.error("Error inicial"); }
+            } catch (err) {
+                console.error("Error al arrancar:", err);
+            }
         };
 
-        async function chequearSesion() {
-            const { data } = await _dbClient.auth.getSession();
+        async function verificarSesionActual() {
+            var { data } = await _dbInstancia.auth.getSession();
             if (data && data.session) {
-                entrar(data.session.user.email);
-            } else {
-                document.getElementById('pantalla-carga').classList.add('hidden');
-                document.getElementById('seccion-auth').classList.remove('hidden');
+                cargarPerfil(data.session.user);
             }
         }
 
-        // --- 2. ACCIÓN PRINCIPAL (SOLUCIONADO) ---
+        async function cargarPerfil(user) {
+            // Buscamos tu rango y empresa en la tabla perfiles
+            var { data, error } = await _dbInstancia.from('perfiles').select('*, empresas(nombre_empresa)').eq('id', user.id).single();
+            
+            document.getElementById('loader').classList.add('hidden');
+            document.getElementById('screen-auth').classList.add('hidden');
+            document.getElementById('screen-dash').classList.remove('hidden');
+            
+            if (data) {
+                document.getElementById('dash-company').innerText = data.empresas.nombre_empresa;
+                document.getElementById('dash-role').innerText = data.rol;
+                document.getElementById('dash-email').innerText = user.email;
+            } else {
+                document.getElementById('dash-email').innerText = user.email + " (Perfil no configurado)";
+            }
+        }
+
+        // --- FUNCIÓN QUE HACE FUNCIONAR LOS BOTONES ---
         async function ejecutarAuth() {
-            var email = document.getElementById('email').value.trim();
-            var pass = document.getElementById('pass').value.trim();
-            var empresa = document.getElementById('reg-empresa').value.trim();
-            var btn = document.getElementById('btn-main');
+            if (!_dbInstancia) return alert("El sistema no pudo conectar con la base de datos. Revisa tu internet.");
+
+            var email = document.getElementById('val-email').value.trim();
+            var pass = document.getElementById('val-pass').value.trim();
+            var empresa = document.getElementById('val-empresa').value.trim();
+            var btn = document.getElementById('btn-auth');
 
             if (!email) return alert("Escribe tu correo");
-            if (modo !== 'olvido' && !pass) return alert("Escribe tu contraseña");
+            if (_modoAuth !== 'olvido' && !pass) return alert("Escribe tu contraseña");
 
             btn.innerText = "PROCESANDO...";
             btn.disabled = true;
 
             try {
-                if (modo === 'login') {
-                    const { error } = await _dbClient.auth.signInWithPassword({ email: email, password: pass });
+                if (_modoAuth === 'login') {
+                    const { error } = await _dbInstancia.auth.signInWithPassword({ email: email, password: pass });
                     if (error) throw error;
                     location.reload();
                 } 
-                else if (modo === 'registro') {
-                    if(!empresa) throw new Error("Escribe el nombre de tu empresa");
-                    const { data: nE, error: errE } = await _dbClient.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
-                    if (errE) throw errE;
-                    const { data: u, error: errU } = await _dbClient.auth.signUp({ email, password: pass });
+                else if (_modoAuth === 'registro') {
+                    if (!empresa) throw new Error("Escribe el nombre de tu empresa");
+                    
+                    // 1. Crear Empresa
+                    const { data: nEmp, error: errEmp } = await _dbInstancia.from('empresas').insert([{ nombre_empresa: empresa }]).select().single();
+                    if (errEmp) throw errEmp;
+                    
+                    // 2. Crear Usuario
+                    const { data: u, error: errU } = await _dbInstancia.auth.signUp({ email: email, password: pass });
                     if (errU) throw errU;
-                    await _dbClient.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nE.id }]);
-                    alert("Empresa Creada. ¡Inicia Sesión!");
+                    
+                    // 3. Crear Perfil
+                    await _dbInstancia.from('perfiles').insert([{ id: u.user.id, email: email, rol: 'admin', empresa_id: nEmp.id }]);
+                    
+                    alert("¡EMPRESA REGISTRADA! Ya puedes entrar.");
                     location.reload();
                 }
-                else if (modo === 'olvido') {
-                    const { error } = await _dbClient.auth.resetPasswordForEmail(email);
+                else if (_modoAuth === 'olvido') {
+                    const { error } = await _dbInstancia.auth.resetPasswordForEmail(email);
                     if (error) throw error;
-                    alert("Enlace de recuperación enviado al correo.");
+                    alert("Enlace enviado al correo.");
                     location.reload();
                 }
-            } catch (err) {
-                alert("AVISO: " + (err.message.includes("Invalid login") ? "Correo o contraseña incorrectos" : err.message));
+            } catch (e) {
+                alert("AVISO: " + (e.message.includes("Invalid login") ? "Correo o clave incorrectos. Usa el ojo para revisar." : e.message));
             } finally {
                 btn.disabled = false;
-                btn.innerText = modo === 'login' ? 'Iniciar Sesión' : modo === 'registro' ? 'Crear Empresa' : 'Enviar Enlace';
+                actualizarTextoBoton();
             }
         }
 
-        // --- 3. FUNCIONES DE INTERFAZ ---
-        function toggleOjo() {
-            var p = document.getElementById('pass');
-            var i = document.getElementById('icono-ojo');
-            if (p.type === "password") {
-                p.type = "text";
-                i.setAttribute('data-lucide', 'eye-off');
+        // --- UTILIDADES ---
+        function verPass() {
+            var input = document.getElementById('val-pass');
+            var icon = document.getElementById('ojo-icon');
+            if (input.type === "password") {
+                input.type = "text";
+                icon.setAttribute('data-lucide', 'eye-off');
             } else {
-                p.type = "password";
-                i.setAttribute('data-lucide', 'eye');
+                input.type = "password";
+                icon.setAttribute('data-lucide', 'eye');
             }
             lucide.createIcons();
         }
 
         function cambiarModo(nuevoModo) {
-            modo = nuevoModo;
-            document.getElementById('div-nombre-emp').className = (modo === 'registro') ? '' : 'hidden';
-            document.getElementById('div-pass').className = (modo === 'olvido') ? 'hidden' : '';
-            document.getElementById('link-registro').className = (modo === 'login') ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden';
-            document.getElementById('link-olvido').className = (modo === 'login') ? 'text-[10px] text-slate-600 cursor-pointer uppercase font-bold tracking-tighter' : 'hidden';
-            document.getElementById('link-volver').className = (modo === 'login') ? 'hidden' : 'text-xs text-slate-400 font-bold cursor-pointer underline pt-4 block';
-            
-            var btn = document.getElementById('btn-main');
-            if(modo === 'registro') btn.innerText = "REGISTRAR MI EMPRESA";
-            if(modo === 'olvido') btn.innerText = "RECUPERAR MI CUENTA";
-            if(modo === 'login') btn.innerText = "INICIAR SESIÓN";
+            _modoAuth = nuevoModo;
+            document.getElementById('group-empresa').className = (nuevoModo === 'registro') ? '' : 'hidden';
+            document.getElementById('btn-switch-reg').className = (nuevoModo === 'login') ? 'text-xs text-blue-400 font-bold cursor-pointer' : 'hidden';
+            document.getElementById('btn-switch-forgot').className = (nuevoModo === 'login') ? 'text-[10px] text-slate-600 cursor-pointer font-bold uppercase tracking-tighter' : 'hidden';
+            document.getElementById('btn-volver').className = (nuevoModo === 'login') ? 'hidden' : 'text-xs text-slate-500 font-bold underline block pt-4';
+            actualizarTextoBoton();
         }
 
-        function entrar(email) {
-            document.getElementById('pantalla-carga').classList.add('hidden');
-            document.getElementById('seccion-auth').classList.add('hidden');
-            document.getElementById('seccion-dash').classList.remove('hidden');
-            document.getElementById('txt-bienvenida').innerText = "Has entrado como: " + email;
+        function actualizarTextoBoton() {
+            var b = document.getElementById('btn-auth');
+            if (_modoAuth === 'login') b.innerText = "INICIAR SESIÓN";
+            if (_modoAuth === 'registro') b.innerText = "REGISTRAR MI EMPRESA";
+            if (_modoAuth === 'olvido') b.innerText = "RECUPERAR MI CUENTA";
         }
 
-        function cerrarSesion() { _dbClient.auth.signOut(); location.reload(); }
+        function cerrarSesion() {
+            _dbInstancia.auth.signOut();
+            location.reload();
+        }
     </script>
 </body>
 </html>
