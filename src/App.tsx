@@ -309,7 +309,7 @@ export default function App() {
             </motion.div>
           </div>
         ) : (
-          <div className="flex min-h-screen">
+          <div className="min-h-screen bg-slate-50 flex">
             <Sidebar 
               activeTab={activeTab} 
               setActiveTab={setActiveTab} 
@@ -317,29 +317,38 @@ export default function App() {
               setIsOpen={setIsSidebarOpen} 
             />
 
-            <div className={`flex-1 flex flex-col min-h-screen overflow-y-auto custom-scrollbar transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
-              {/* Header */}
-              <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-xl border-b border-slate-200 px-6 py-4">
-                <div className="max-w-7xl mx-auto flex justify-between items-center">
-                  <div className="flex items-center gap-4">
+            <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'}`}>
+              {/* Barra superior 100% FIJA (Fixed Header) */}
+              <div className={`fixed top-0 right-0 left-0 z-40 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.06)] transition-all duration-300 ${isSidebarOpen ? 'lg:left-64' : 'lg:left-20'}`}>
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between relative">
+                  {/* Botón de Menú a la izquierda */}
+                  <div className="flex items-center">
                     <button 
                       onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-                      className="p-2 hover:bg-slate-100 rounded-xl text-slate-500 lg:hidden"
+                      className="p-2 hover:bg-slate-100 active:scale-95 rounded-xl text-slate-700 transition-all border border-slate-200/60 bg-slate-50/50 shadow-xs"
+                      title="Menú"
                     >
-                      {isSidebarOpen ? <X size={24} /> : <Menu size={24} />}
+                      {isSidebarOpen ? <X size={22} /> : <Menu size={22} />}
                     </button>
-                    {/* No redundant text here */}
                   </div>
-                  <div className="flex items-center gap-4">
+
+                  {/* Indicador de Estado centrado */}
+                  <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
                     <ConnectionStatus />
-                    <div className="h-8 w-px bg-slate-200 mx-2" />
+                  </div>
+
+                  {/* Perfil a la derecha */}
+                  <div className="flex items-center gap-3">
                     <Auth />
                   </div>
                 </div>
-              </header>
+              </div>
 
-              {/* Main Content */}
-              <main className="flex-1 p-6 lg:p-10 relative">
+              {/* Espaciador exacto para que el contenido inicie debajo de la barra fija */}
+              <div className="h-14 w-full flex-shrink-0" />
+
+              {/* Main Content que pasa por debajo de la barra */}
+              <main className="flex-1 p-4 sm:p-6 lg:p-10 relative">
                 <AnimatePresence>
                   {showReminder && activeTab !== 'corte' && (
                     <motion.div
