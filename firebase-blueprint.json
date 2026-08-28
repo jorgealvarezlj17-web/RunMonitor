@@ -1,0 +1,236 @@
+{
+  "entities": {
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Represents a piece of work equipment.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the equipment."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "description": "The current status of the equipment."
+        },
+        "lastUpdated": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the status was last changed."
+        },
+        "lastTurnedOn": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the equipment was last turned on (null if off)."
+        },
+        "disabled": {
+          "type": "boolean",
+          "description": "Whether the equipment is disabled."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "The UID of the user who added the equipment."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional image URL for the equipment."
+        },
+        "order": {
+          "type": "number",
+          "description": "The display order of the equipment."
+        },
+        "totalUsageTime": {
+          "type": "number",
+          "description": "Total cumulative usage time in seconds."
+        },
+        "categoryId": {
+          "type": "string",
+          "description": "The ID of the category this equipment belongs to."
+        },
+        "tiempo_operativo": {
+          "type": "boolean",
+          "description": "Whether the equipment's operational time should be tracked."
+        },
+        "lastOffReason": {
+          "type": "string",
+          "description": "The reason the equipment was last turned off."
+        }
+      },
+      "required": ["name", "status", "lastUpdated", "ownerUid"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "A category to organize equipment.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The name of the category."
+        },
+        "ownerUid": {
+          "type": "string",
+          "description": "The UID of the user who created the category."
+        },
+        "order": {
+          "type": "number",
+          "description": "The display order of the category."
+        }
+      },
+      "required": ["name", "ownerUid"]
+    },
+    "Log": {
+      "title": "Log",
+      "description": "Represents an on/off event for a piece of equipment.",
+      "type": "object",
+      "properties": {
+        "equipmentId": {
+          "type": "string",
+          "description": "The ID of the equipment."
+        },
+        "action": {
+          "type": "string",
+          "enum": ["on", "off"],
+          "description": "The action performed."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the action occurred."
+        },
+        "userUid": {
+          "type": "string",
+          "description": "The UID of the user who performed the action."
+        },
+        "duration": {
+          "type": "number",
+          "description": "The duration the equipment was on, in seconds (only for 'off' actions)."
+        },
+        "details": {
+          "type": "string",
+          "description": "Optional details or notes for the log."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Optional single image URL (legacy)."
+        },
+        "imageUrls": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Optional list of image URLs for the log."
+        },
+        "isManual": {
+          "type": "boolean",
+          "description": "Whether the log was created manually."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Optional reason for the action, e.g., 'Apagado por falla'."
+        }
+      },
+      "required": ["equipmentId", "action", "timestamp", "userUid"]
+    },
+    "PowerEvent": {
+      "title": "PowerEvent",
+      "description": "Represents a power status change event.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["ok", "falla", "corte"],
+          "description": "The type of power event."
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the event occurred."
+        },
+        "userUid": {
+          "type": "string",
+          "description": "The UID of the user who recorded the event."
+        }
+      },
+      "required": ["type", "timestamp", "userUid"]
+    },
+    "AllowedEmail": {
+      "title": "AllowedEmail",
+      "description": "A list of emails allowed to register/login.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "description": "The allowed email address."
+        },
+        "addedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "When the email was added to the list."
+        }
+      },
+      "required": ["email"]
+    },
+    "FormSubmission": {
+      "title": "FormSubmission",
+      "description": "A completed daily report form submission.",
+      "type": "object",
+      "properties": {
+        "fecha": { "type": "string", "format": "date" },
+        "continuidad": { "type": "string" },
+        "duracionFalla": { "type": "string" },
+        "fallaVoltaje": { "type": "string" },
+        "duracionFallaVoltaje": { "type": "string" },
+        "mantenimientoCorrectivo": { "type": "array", "items": { "type": "string" } },
+        "obsCorrectivo": { "type": "string" },
+        "mantenimientoPreventivo": { "type": "array", "items": { "type": "string" } },
+        "obsPreventivo": { "type": "string" },
+        "generadorInoperativo": { "type": "array", "items": { "type": "string" } },
+        "obsInoperativo": { "type": "string" },
+        "encendidoMaternidad": { "type": "string" },
+        "tiempoMaternidad": { "type": "string" },
+        "encendidoCampamento": { "type": "string" },
+        "tiempoCampamento": { "type": "string" },
+        "encendidoSubestacion": { "type": "string" },
+        "tiempoSubestacion": { "type": "string" },
+        "bombeoPlaya": { "type": "string" },
+        "bombeoPozo": { "type": "string" },
+        "tanquesAireacion": { "type": "array", "items": { "type": "string" } },
+        "tanquesMovimiento": { "type": "array", "items": { "type": "string" } },
+        "encendidoBlowers": { "type": "string" },
+        "tiemposBlowers": { "type": "object" },
+        "reporteFalla": { "type": "string" },
+        "fotosFalla": { "type": "array", "items": { "type": "string" } },
+        "submittedAt": { "type": "string", "format": "date-time" },
+        "submittedBy": { "type": "string" }
+      },
+      "required": ["fecha", "submittedAt", "submittedBy"]
+    }
+  },
+  "firestore": {
+    "/equipment/{equipmentId}": {
+      "schema": "Equipment",
+      "description": "Collection of work equipment."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Collection of equipment categories."
+    },
+    "/logs/{logId}": {
+      "schema": "Log",
+      "description": "Logs of equipment status changes."
+    },
+    "/power_events/{eventId}": {
+      "schema": "PowerEvent",
+      "description": "Logs of power status changes."
+    },
+    "/allowed_emails/{emailId}": {
+      "schema": "AllowedEmail",
+      "description": "Whitelist of emails allowed to access the system."
+    },
+    "/form_submissions/{submissionId}": {
+      "schema": "FormSubmission",
+      "description": "Completed daily report form submissions."
+    }
+  }
+}

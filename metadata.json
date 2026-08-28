@@ -1,0 +1,5 @@
+{
+  "name": "Run Monitor",
+  "description": "Aplicación para gestionar equipos de trabajo, registrar encendido/apagado, generar imágenes con IA y chat de soporte.",
+  "requestFramePermissions": ["camera"]
+}

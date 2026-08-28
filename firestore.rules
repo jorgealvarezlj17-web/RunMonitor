@@ -1,0 +1,108 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (
+          (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email != null && 
+           (request.auth.token.email.matches("(?i)^(jorgealvarez\\.lj17|j\\.alvarez\\.lj17)@.*$") ||
+            request.auth.token.email in ["jorgealvarez.lj17@gmail.com", "j.alvarez.lj17@gmail.com"]))
+        );
+    }
+
+    // Rules
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /profiles/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
+    match /config/current_shift_observations {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /config/current_shift_maintenance {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /config/current_shift_tanks {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /config/previous_shift_tanks {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /config/app_settings {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /config/{configId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /power_events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAuthenticated();
+    }
+
+    match /form_submissions/{submissionId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /allowed_emails/{emailId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated();
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
