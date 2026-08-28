@@ -16,7 +16,7 @@ import { TeamPanel } from './components/TeamPanel';
 import { Activity, ShieldCheck, Menu, X, BellRing, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
-import { useProfile } from './context/ProfileContext';
+import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
 
 const APP_VERSION = "1.2.0";
@@ -59,29 +59,18 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!user || (user.email !== 'jorgealvarez.lj17@gmail.com' && !user.email?.includes('jorgealvarez.lj17'))) return;
+    if (!user || !isMasterAdminEmail(user.email)) return;
     // Clean up admin emails from whitelist since they bypass it programmatically
     const cleanupAdminEmails = async () => {
       try {
-        const admins = ['jorgealvarez.lj17@gmail.com'];
+        const admins = ['jorgealvarez.lj17@gmail.com', 'j.alvarez.lj17@gmail.com'];
         for (const admin of admins) {
           const adminRef = doc(db, 'allowed_emails', admin);
           const snap = await getDoc(adminRef);
           if (snap.exists()) {
             await deleteDoc(adminRef);
-            console.log(`Cleaned up admin email ${admin} from whitelist`);
           }
         }
-
-        // Also dynamically fetch and clean up any emails in allowed_emails matching the admin prefixes
-        const snapshot = await getDocs(collection(db, 'allowed_emails'));
-        snapshot.forEach(async (docSnap) => {
-          const email = docSnap.id.toLowerCase().trim();
-          if (email.startsWith('jorgealvarez.lj17@') || email === 'jorgealvarez.lj17') {
-            await deleteDoc(docSnap.ref);
-            console.log(`Cleaned up matching admin-prefix email ${email} from whitelist`);
-          }
-        });
       } catch (error) {
         console.error('Error cleaning up admin emails:', error);
       }

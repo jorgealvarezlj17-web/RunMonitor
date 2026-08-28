@@ -65,6 +65,12 @@ export interface Profile {
   photo_url?: string;
 }
 
+export const isMasterAdminEmail = (email: string | null | undefined): boolean => {
+  if (!email) return false;
+  const normalized = email.toLowerCase().trim();
+  return normalized === 'jorgealvarez.lj17@gmail.com' || normalized === 'j.alvarez.lj17@gmail.com';
+};
+
 interface ProfileContextType {
   profile: Profile | null;
   loading: boolean;
@@ -93,29 +99,38 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
     let unsubscribeProfile: (() => void) | undefined;
     let currentUserRef: ReturnType<typeof doc> | undefined;
 
-    const handleBeforeUnload = () => {
+    const markOfflineImmediate = () => {
       if (currentUserRef) {
-        setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(err => {
+        setDoc(currentUserRef, { 
+          is_online: false, 
+          last_connection: new Date().toISOString() 
+        }, { merge: true }).catch(err => {
           console.error('Error setting offline status:', err);
         });
       }
     };
 
-    const handleVisibilityChange = () => {
-      if (currentUserRef) {
-        if (document.visibilityState === 'hidden') {
-          setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(err => {
-            console.error('Error setting offline status:', err);
-          });
-        } else {
-          setDoc(currentUserRef, { is_online: true, last_connection: new Date().toISOString() }, { merge: true }).catch(err => {
-            console.error('Error setting online status:', err);
-          });
-        }
+    const markOnlineImmediate = () => {
+      if (currentUserRef && document.visibilityState === 'visible' && !document.hidden) {
+        setDoc(currentUserRef, { 
+          is_online: true, 
+          last_connection: new Date().toISOString() 
+        }, { merge: true }).catch(err => {
+          console.error('Error setting online status:', err);
+        });
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' || document.hidden) {
+        markOfflineImmediate();
+      } else {
+        markOnlineImmediate();
+      }
+    };
+
+    window.addEventListener('beforeunload', markOfflineImmediate);
+    window.addEventListener('pagehide', markOfflineImmediate);
     window.addEventListener('visibilitychange', handleVisibilityChange);
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
@@ -132,11 +147,16 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           handleFirestoreError(err, OperationType.GET, profilePath);
         }
 
-        const updatePresence = async () => {
+        const updatePresence = async (isViewing = true) => {
           if (!currentUserRef) return;
+          // If document is hidden, never send an online heartbeat
+          if (document.hidden || document.visibilityState === 'hidden') {
+            return;
+          }
+          const isCurrentlyVisible = isViewing && document.visibilityState === 'visible' && !document.hidden;
           try {
             const updates: any = { 
-              is_online: true, 
+              is_online: isCurrentlyVisible, 
               last_connection: new Date().toISOString() 
             };
             if (user.photoURL) {
@@ -153,15 +173,30 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         if (!docSnap || !docSnap.exists()) {
           const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
-          const isAdminEmail = userEmailLower.startsWith('jorgealvarez.lj17@') || 
-                               userEmailLower === 'jorgealvarez.lj17@gmail.com';
+          const isAdminEmail = isMasterAdminEmail(userEmailLower);
+          
+          let initialRole: 'admin' | 'operator' = isAdminEmail ? 'admin' : 'operator';
+          let initialName = user.displayName || user.email?.split('@')[0] || (isAdminEmail ? 'Administrador' : 'Operador');
+
+          // Check if there is pre-configured data in allowed_emails
+          try {
+            const allowedDoc = await getDoc(doc(db, 'allowed_emails', userEmailLower));
+            if (allowedDoc.exists()) {
+              const allowedData = allowedDoc.data();
+              if (allowedData.name) initialName = allowedData.name;
+              if (allowedData.role === 'admin') initialRole = 'admin';
+            }
+          } catch (e) {
+            console.warn('Could not read allowed_emails for initial profile:', e);
+          }
+
           const newProfile: Profile = {
             id: user.uid,
             email: user.email || '',
-            full_name: user.displayName || user.email?.split('@')[0] || (isAdminEmail ? 'Administrador' : 'Operador'),
-            role: isAdminEmail ? 'admin' : 'operator', // Default role
-            is_synced: isAdminEmail, // Only admin is synced by default
-            is_online: true,
+            full_name: initialName,
+            role: initialRole,
+            is_synced: true,
+            is_online: document.visibilityState === 'visible' && !document.hidden,
             last_connection: new Date().toISOString()
           };
           if (user.photoURL) {
@@ -173,22 +208,41 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             handleFirestoreError(err, OperationType.WRITE, profilePath);
           }
         } else {
-          // Update online status and metadata immediately
-          await updatePresence();
+          // Update online status and metadata immediately based on visibility
+          if (document.visibilityState === 'visible' && !document.hidden) {
+            await updatePresence(true);
+          }
         }
 
-        // Set up heartbeat every 60 seconds
-        const heartbeatInterval = setInterval(updatePresence, 60000);
+        // Live heartbeat every 4 seconds while user is actively looking at the app
+        const heartbeatInterval = setInterval(() => {
+          if (document.visibilityState === 'visible' && !document.hidden) {
+            updatePresence(true);
+          }
+        }, 4000);
+
+        // User activity listener for presence (throttled to 4s)
+        let lastActivityUpdate = Date.now();
+        const handleUserActivity = () => {
+          const now = Date.now();
+          if (now - lastActivityUpdate > 4000 && document.visibilityState === 'visible' && !document.hidden) {
+            lastActivityUpdate = now;
+            updatePresence(true);
+          }
+        };
+
+        window.addEventListener('pointerdown', handleUserActivity);
+        window.addEventListener('keydown', handleUserActivity);
+        window.addEventListener('touchstart', handleUserActivity);
 
         // Listen to profile changes
         unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as Profile;
             
-            // Auto-promote the initial admin user if they are not admin or not synced
+            // Auto-promote ONLY the master admin user if needed
             const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
-            const isAdminEmail = userEmailLower.startsWith('jorgealvarez.lj17@') || 
-                                 userEmailLower === 'jorgealvarez.lj17@gmail.com';
+            const isAdminEmail = isMasterAdminEmail(userEmailLower);
             
             if (isAdminEmail) {
               if (data.role !== 'admin' || !data.is_synced) {
@@ -197,7 +251,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 } catch (err) {
                   handleFirestoreError(err, OperationType.WRITE, profilePath);
                 }
-                return; // The next snapshot will have the updated data
+                return;
               }
             }
             
@@ -208,18 +262,18 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           handleFirestoreError(err, OperationType.GET, profilePath);
         });
 
-        // Attach the interval clear to the cleanup logic
         const originalUnsubscribeProfile = unsubscribeProfile;
         unsubscribeProfile = () => {
           clearInterval(heartbeatInterval);
+          window.removeEventListener('pointerdown', handleUserActivity);
+          window.removeEventListener('keydown', handleUserActivity);
+          window.removeEventListener('touchstart', handleUserActivity);
           if (originalUnsubscribeProfile) originalUnsubscribeProfile();
         };
 
       } else {
         if (currentUserRef) {
-          setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(err => {
-            console.error('Error setting offline status:', err);
-          });
+          markOfflineImmediate();
           currentUserRef = undefined;
         }
         if (unsubscribeProfile) {
@@ -233,12 +287,11 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     return () => {
       unsubscribeAuth();
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('beforeunload', markOfflineImmediate);
+      window.removeEventListener('pagehide', markOfflineImmediate);
       window.removeEventListener('visibilitychange', handleVisibilityChange);
       if (currentUserRef) {
-        setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(err => {
-          console.error('Error setting offline status:', err);
-        });
+        markOfflineImmediate();
       }
       if (unsubscribeProfile) {
         unsubscribeProfile();

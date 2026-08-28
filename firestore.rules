@@ -17,8 +17,7 @@ service cloud.firestore {
           (exists(/databases/$(database)/documents/profiles/$(request.auth.uid)) && 
            get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.role == 'admin') ||
           (request.auth.token.email != null && 
-           (request.auth.token.email.matches("(?i)^(jorgealvarez\\.lj17|j\\.alvarez\\.lj17)@.*$") ||
-            request.auth.token.email in ["jorgealvarez.lj17@gmail.com", "j.alvarez.lj17@gmail.com"]))
+           request.auth.token.email in ["jorgealvarez.lj17@gmail.com", "j.alvarez.lj17@gmail.com"])
         );
     }
 
@@ -97,7 +96,7 @@ service cloud.firestore {
     }
 
     match /allowed_emails/{emailId} {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow create, update, delete: if isAuthenticated();
     }
 

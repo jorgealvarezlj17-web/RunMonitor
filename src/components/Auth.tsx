@@ -13,7 +13,7 @@ import { auth, db } from '../firebase';
 import { LogIn, LogOut, Mail, Lock, User as UserIcon, ShieldCheck, AlertCircle, Loader2, UserPlus, Eye, EyeOff, CheckCircle2, Camera, Image as ImageIcon, ChevronDown } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
-import { useProfile } from '../context/ProfileContext';
+import { useProfile, isMasterAdminEmail } from '../context/ProfileContext';
 import { ImageCropperModal } from './ImageCropperModal';
 
 enum OperationType {
@@ -214,8 +214,7 @@ export const Auth: React.FC = () => {
       
       // Check whitelist for Google Login too
       const loggedEmail = result.user.email ? result.user.email.toLowerCase().trim() : '';
-      const isAdminEmail = loggedEmail.startsWith('jorgealvarez.lj17@') || 
-                           loggedEmail === 'jorgealvarez.lj17@gmail.com';
+      const isAdminEmail = isMasterAdminEmail(loggedEmail);
       
       if (result.user.email && !isAdminEmail) {
         const emailLower = result.user.email.toLowerCase().trim();
@@ -224,7 +223,13 @@ export const Auth: React.FC = () => {
         
         if (!allowedSnap.exists()) {
           await signOut(auth);
-          throw new Error(JSON.stringify({ error: 'Este correo no está en la lista de acceso permitido. Contacta al administrador.' }));
+          throw new Error(JSON.stringify({ error: 'Acceso restringido: Este correo no se encuentra en la lista de trabajadores autorizados. Solicita al administrador que autorice tu acceso en el Panel de Equipo.' }));
+        }
+
+        const allowedData = allowedSnap.data();
+        if (allowedData?.status === 'inactive') {
+          await signOut(auth);
+          throw new Error(JSON.stringify({ error: 'Acceso suspendido: Tu correo se encuentra temporalmente desactivado por el administrador.' }));
         }
       }
     } catch (error: any) {
@@ -259,33 +264,26 @@ export const Auth: React.FC = () => {
         emailLower = `${emailLower}@gmail.com`;
       }
 
+      const isAdminEmail = isMasterAdminEmail(emailLower);
+
       if (isLogin) {
+        // Pre-check whitelist for non-admins if document exists
         const userCredential = await signInWithEmailAndPassword(auth, emailLower, password);
-        
-        // Check whitelist after successful authentication if not admin
         const loggedEmail = userCredential.user.email ? userCredential.user.email.toLowerCase().trim() : '';
-        const isAdminEmail = loggedEmail.startsWith('jorgealvarez.lj17@') || 
-                             loggedEmail === 'jorgealvarez.lj17@gmail.com';
         
-        if (!isAdminEmail) {
-          try {
-            const allowedRef = doc(db, 'allowed_emails', loggedEmail);
-            const allowedSnap = await getDoc(allowedRef);
-            // If the admin has created whitelist entries and this email is not present
-            if (allowedSnap && !allowedSnap.exists()) {
-              // Check if whitelist has any entries
-              const { getDocs, collection } = await import('firebase/firestore');
-              const allAllowed = await getDocs(collection(db, 'allowed_emails'));
-              if (!allAllowed.empty && !allAllowed.docs.some(d => d.id.toLowerCase() === loggedEmail)) {
-                await signOut(auth);
-                throw new Error(JSON.stringify({ error: 'Este correo no está en la lista de acceso permitido. Contacta al administrador.' }));
-              }
-            }
-          } catch (whitelistErr: any) {
-            if (whitelistErr.message?.includes('lista de acceso permitido')) {
-              throw whitelistErr;
-            }
-            // If allowed_emails collection is empty or not queried, proceed smoothly
+        if (!isAdminEmail && loggedEmail) {
+          const allowedRef = doc(db, 'allowed_emails', loggedEmail);
+          const allowedSnap = await getDoc(allowedRef);
+          
+          if (!allowedSnap.exists()) {
+            await signOut(auth);
+            throw new Error(JSON.stringify({ error: 'Acceso restringido: Este correo no está autorizado en el filtro de seguridad. Solicita al administrador que autorice tu acceso en el Panel de Equipo.' }));
+          }
+
+          const allowedData = allowedSnap.data();
+          if (allowedData?.status === 'inactive') {
+            await signOut(auth);
+            throw new Error(JSON.stringify({ error: 'Acceso suspendido: Tu cuenta se encuentra temporalmente desactivada por el administrador.' }));
           }
         }
       } else {
@@ -299,6 +297,24 @@ export const Auth: React.FC = () => {
           setLoading(false);
           return;
         }
+
+        // Security filter verification BEFORE creating user in Firebase Auth
+        if (!isAdminEmail) {
+          const allowedRef = doc(db, 'allowed_emails', emailLower);
+          const allowedSnap = await getDoc(allowedRef);
+          if (!allowedSnap.exists()) {
+            throw new Error(JSON.stringify({ 
+              error: 'Filtro de seguridad: Este correo no ha sido autorizado por el administrador. Solicita que agreguen tu correo en el Panel de Equipo para poder registrarte.' 
+            }));
+          }
+          const allowedData = allowedSnap.data();
+          if (allowedData?.status === 'inactive') {
+            throw new Error(JSON.stringify({ 
+              error: 'Acceso suspendido: Este correo está marcado como inactivo por el administrador.' 
+            }));
+          }
+        }
+
         const userCredential = await createUserWithEmailAndPassword(auth, emailLower, password);
         
         await updateProfile(userCredential.user, {
