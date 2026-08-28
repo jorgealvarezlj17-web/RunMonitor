@@ -105,10 +105,25 @@ export const Auth: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    const reason = typeof window !== 'undefined' ? sessionStorage.getItem('auth_revoked_reason') : null;
+    if (reason) {
+      sessionStorage.removeItem('auth_revoked_reason');
+      return reason;
+    }
+    return null;
+  });
   const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  React.useEffect(() => {
+    const reason = sessionStorage.getItem('auth_revoked_reason');
+    if (reason) {
+      setError(reason);
+      sessionStorage.removeItem('auth_revoked_reason');
+    }
+  }, []);
 
   const processImage = (file: File, callback: (dataUrl: string) => void) => {
     const objectUrl = URL.createObjectURL(file);
@@ -206,6 +221,10 @@ export const Auth: React.FC = () => {
 
   const loginWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
     try {
       setLoading(true);
       setError(null);
@@ -223,13 +242,17 @@ export const Auth: React.FC = () => {
         
         if (!allowedSnap.exists()) {
           await signOut(auth);
-          throw new Error(JSON.stringify({ error: 'Acceso restringido: Este correo no se encuentra en la lista de trabajadores autorizados. Solicita al administrador que autorice tu acceso en el Panel de Equipo.' }));
+          throw new Error(JSON.stringify({
+            error: `Acceso restringido: El correo "${emailLower}" no está registrado en el filtro de trabajadores autorizados. Solicita al administrador que lo agregue en el Panel de Equipo.`
+          }));
         }
 
         const allowedData = allowedSnap.data();
         if (allowedData?.status === 'inactive') {
           await signOut(auth);
-          throw new Error(JSON.stringify({ error: 'Acceso suspendido: Tu correo se encuentra temporalmente desactivado por el administrador.' }));
+          throw new Error(JSON.stringify({
+            error: `Acceso suspendido: El correo "${emailLower}" se encuentra temporalmente desactivado por el administrador.`
+          }));
         }
       }
     } catch (error: any) {
@@ -238,12 +261,19 @@ export const Auth: React.FC = () => {
         const jsonError = JSON.parse(error.message);
         setError(jsonError.error);
       } catch {
-        if (error.code === 'auth/popup-closed-by-user') {
-          setError('El inicio de sesión con Google fue cancelado. Inténtalo de nuevo.');
-        } else if (error.code === 'auth/operation-not-allowed') {
-          setError('El inicio de sesión con Google no está habilitado en la consola de Firebase.');
+        const errorCode = error?.code || '';
+        if (errorCode === 'auth/popup-closed-by-user') {
+          setError('Ventana de Google cerrada o cancelada. Toca el botón nuevamente para iniciar sesión.');
+        } else if (errorCode === 'auth/popup-blocked') {
+          setError('El navegador bloqueó la ventana emergente de Google. Habilita las ventanas emergentes (Pop-ups) o usa el inicio con Correo y Contraseña.');
+        } else if (errorCode === 'auth/cancelled-popup-request') {
+          setError('Se canceló la solicitud anterior de Google. Inténtalo de nuevo.');
+        } else if (errorCode === 'auth/operation-not-allowed') {
+          setError('El proveedor de Google no está habilitado en Firebase Auth.');
+        } else if (errorCode === 'auth/unauthorized-domain') {
+          setError('Este dominio web no está autorizado en Firebase Authentication.');
         } else {
-          setError('Error al iniciar sesión con Google. Inténtalo de nuevo.');
+          setError(error?.message || 'Error al iniciar sesión con Google. Inténtalo de nuevo o ingresa con correo y contraseña.');
         }
       }
     } finally {
@@ -390,8 +420,9 @@ export const Auth: React.FC = () => {
   };
 
   const handleResetPassword = async () => {
-    if (!email) {
-      setError('Por favor, ingresa tu correo electrónico para restablecer la contraseña.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError('Por favor, escribe tu correo electrónico en el campo de arriba para poder restablecer la contraseña.');
       return;
     }
 
@@ -400,14 +431,19 @@ export const Auth: React.FC = () => {
     setSuccess(null);
 
     try {
-      await sendPasswordResetEmail(auth, email);
-      setSuccess('Se ha enviado un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.');
+      await sendPasswordResetEmail(auth, cleanEmail);
+      setSuccess(`Enlace enviado a ${cleanEmail}. Por favor revisa tu bandeja de entrada y también tu carpeta de SPAM / Correo no deseado. Si creaste tu cuenta usando Google, puedes ingresar directamente con el botón de Google.`);
     } catch (error: any) {
       console.error('Reset password error:', error);
-      if (error.code === 'auth/user-not-found') {
-        setError('No existe una cuenta con este correo electrónico.');
+      const errorCode = error?.code || '';
+      if (errorCode === 'auth/user-not-found') {
+        setError(`No existe una cuenta registrada con ${cleanEmail}. Si aún no te has registrado, toca "Crear Cuenta" o inicia sesión con Google.`);
+      } else if (errorCode === 'auth/invalid-email') {
+        setError('El formato del correo electrónico no es válido. Revisa que no tenga espacios ni errores.');
+      } else if (errorCode === 'auth/too-many-requests') {
+        setError('Demasiados intentos seguidos. Por favor espera unos minutos antes de volver a solicitar el restablecimiento.');
       } else {
-        setError('Error al enviar el correo de restablecimiento. Inténtalo de nuevo.');
+        setError('Error al enviar el correo de restablecimiento: ' + (error?.message || 'Inténtalo nuevamente.'));
       }
     } finally {
       setLoading(false);

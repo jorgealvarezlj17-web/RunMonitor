@@ -270,7 +270,6 @@ export const Settings: React.FC = () => {
 
   const handleDeleteCategory = async (id: string) => {
     if (isReadOnly) return;
-    if (!window.confirm('¿Estás seguro de eliminar esta área?')) return;
     sounds.playClick();
     try {
       await deleteDoc(doc(db, 'categories', id));

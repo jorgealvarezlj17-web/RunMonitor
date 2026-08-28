@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { doc, getDoc, getDocFromServer, setDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { Auth } from './components/Auth';
@@ -291,7 +291,7 @@ export default function App() {
                 Contacta al administrador para que vincule tu cuenta al historial global.
               </p>
               <button
-                onClick={() => auth.signOut()}
+                onClick={() => signOut(auth)}
                 className="w-full py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition-all"
               >
                 Cerrar Sesión

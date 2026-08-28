@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
 
 enum OperationType {
   CREATE = 'create',
@@ -92,7 +92,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         console.error('Error setting offline status on logout:', err);
       }
     }
-    await auth.signOut();
+    await signOut(auth);
   };
 
   useEffect(() => {
@@ -235,15 +235,54 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
         window.addEventListener('keydown', handleUserActivity);
         window.addEventListener('touchstart', handleUserActivity);
 
+        // Realtime whitelist/authorization listener for non-admin accounts
+        let unsubscribeAllowedEmail: (() => void) | undefined;
+        const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
+        const isAdminEmail = isMasterAdminEmail(userEmailLower);
+
+        if (!isAdminEmail) {
+          if (!userEmailLower) {
+            console.warn('[Security] User has no email. Revoking session.');
+            sessionStorage.setItem('auth_revoked_reason', 'Acceso denegado: Se requiere una cuenta con correo autorizado.');
+            setProfile(null);
+            signOut(auth).catch((e) => console.error('Sign out error:', e));
+          } else {
+            const allowedDocRef = doc(db, 'allowed_emails', userEmailLower);
+            unsubscribeAllowedEmail = onSnapshot(allowedDocRef, (allowedSnap) => {
+              if (!allowedSnap.exists()) {
+                console.warn('[Security] User email removed from allowed_emails whitelist. Revoking session immediately.');
+                sessionStorage.setItem('auth_revoked_reason', 'Acceso revocado: Tu correo fue eliminado de la lista de personal autorizado.');
+                if (currentUserRef) {
+                  setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(() => {});
+                }
+                setProfile(null);
+                signOut(auth).catch((e) => console.error('Sign out error:', e));
+                return;
+              }
+
+              const allowedData = allowedSnap.data();
+              if (allowedData?.status === 'inactive') {
+                console.warn('[Security] User email status set to inactive. Revoking session immediately.');
+                sessionStorage.setItem('auth_revoked_reason', 'Acceso suspendido: Tu cuenta ha sido desactivada temporalmente por el administrador.');
+                if (currentUserRef) {
+                  setDoc(currentUserRef, { is_online: false, last_connection: new Date().toISOString() }, { merge: true }).catch(() => {});
+                }
+                setProfile(null);
+                signOut(auth).catch((e) => console.error('Sign out error:', e));
+                return;
+              }
+            }, (err) => {
+              console.error('Error listening to allowed_emails realtime status:', err);
+            });
+          }
+        }
+
         // Listen to profile changes
         unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as Profile;
             
             // Auto-promote ONLY the master admin user if needed
-            const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
-            const isAdminEmail = isMasterAdminEmail(userEmailLower);
-            
             if (isAdminEmail) {
               if (data.role !== 'admin' || !data.is_synced) {
                 try {
@@ -256,6 +295,15 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
             
             setProfile(data);
+          } else {
+            // Profile document was deleted
+            if (!isAdminEmail) {
+              console.warn('[Security] Profile document was deleted. Forcing logout.');
+              sessionStorage.setItem('auth_revoked_reason', 'Tu perfil de usuario fue eliminado del sistema.');
+              setProfile(null);
+              signOut(auth).catch((e) => console.error('Sign out error:', e));
+              return;
+            }
           }
           setLoading(false);
         }, (err) => {
@@ -268,6 +316,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           window.removeEventListener('pointerdown', handleUserActivity);
           window.removeEventListener('keydown', handleUserActivity);
           window.removeEventListener('touchstart', handleUserActivity);
+          if (unsubscribeAllowedEmail) unsubscribeAllowedEmail();
           if (originalUnsubscribeProfile) originalUnsubscribeProfile();
         };
 

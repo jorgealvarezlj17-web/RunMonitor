@@ -26,7 +26,8 @@ import {
   Info,
   Radio,
   Eye,
-  EyeOff
+  EyeOff,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -72,6 +73,15 @@ export const TeamPanel: React.FC = () => {
   const [newRole, setNewRole] = useState<'operator' | 'admin'>('operator');
   const [isSubmittingEmail, setIsSubmittingEmail] = useState(false);
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Deletion Modal State
+  const [deleteModal, setDeleteModal] = useState<{
+    type: 'email' | 'profile';
+    id: string;
+    email: string;
+    name?: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Tabs & Filters
   const [activeTab, setActiveTab] = useState<'users' | 'whitelist'>('users');
@@ -195,6 +205,21 @@ export const TeamPanel: React.FC = () => {
       await updateDoc(doc(db, 'allowed_emails', item.id), {
         status: newStatus
       });
+
+      if (newStatus === 'inactive') {
+        const matchingProfile = profiles.find(p => p.email?.toLowerCase().trim() === item.email.toLowerCase().trim());
+        if (matchingProfile) {
+          try {
+            await setDoc(doc(db, 'profiles', matchingProfile.id), {
+              is_online: false,
+              last_connection: new Date().toISOString()
+            }, { merge: true });
+          } catch (e) {
+            console.warn('Could not update profile offline status on email toggle:', e);
+          }
+        }
+      }
+
       setFeedbackMsg({
         type: 'success',
         text: `Acceso ${newStatus === 'active' ? 'activado' : 'suspendido'} para ${item.email}`
@@ -251,48 +276,82 @@ export const TeamPanel: React.FC = () => {
     }
   };
 
-  // Remove worker email from security filter
-  const removeAllowedEmail = async (email: string) => {
+  // Trigger removal of worker email from security filter
+  const triggerRemoveAllowedEmail = (item: AllowedEmailItem) => {
     sounds.playClick();
-    if (!window.confirm(`¿Estás seguro de revocar la autorización a "${email}"?\n\nAl eliminarlo del filtro, este usuario ya no podrá iniciar sesión en la plataforma.`)) {
-      return;
-    }
-
-    try {
-      await deleteDoc(doc(db, 'allowed_emails', email.toLowerCase().trim()));
-      setFeedbackMsg({
-        type: 'success',
-        text: `Autorización de "${email}" revocada exitosamente.`
-      });
-      setTimeout(() => setFeedbackMsg(null), 3500);
-    } catch (error: any) {
-      console.error('Error removing allowed email:', error);
-      setFeedbackMsg({
-        type: 'error',
-        text: 'Error al eliminar correo: ' + (error?.message || String(error))
-      });
-    }
+    setDeleteModal({
+      type: 'email',
+      id: item.id,
+      email: item.email,
+      name: item.name
+    });
   };
 
-  // Delete profile
-  const deleteProfile = async (profile: Profile) => {
+  // Trigger deletion of profile
+  const triggerDeleteProfile = (profile: Profile) => {
     sounds.playClick();
-    if (!window.confirm(`¿Eliminar permanentemente el perfil de "${profile.full_name || profile.email}"?`)) {
-      return;
-    }
+    setDeleteModal({
+      type: 'profile',
+      id: profile.id,
+      email: profile.email || '',
+      name: profile.full_name || profile.email || 'Usuario'
+    });
+  };
+
+  // Execute confirmed deletion in Firestore
+  const handleConfirmDelete = async () => {
+    if (!deleteModal) return;
+    sounds.playClick();
+    setIsDeleting(true);
+
     try {
-      await deleteDoc(doc(db, 'profiles', profile.id));
-      setFeedbackMsg({
-        type: 'success',
-        text: `Perfil de ${profile.full_name || profile.email} eliminado.`
-      });
+      if (deleteModal.type === 'email') {
+        const emailDocId = deleteModal.id.toLowerCase().trim();
+        await deleteDoc(doc(db, 'allowed_emails', emailDocId));
+
+        // Completely delete any matching profile from Firestore to prevent conflicts
+        const matchingProfile = profiles.find(p => p.email?.toLowerCase().trim() === emailDocId);
+        if (matchingProfile) {
+          try {
+            await deleteDoc(doc(db, 'profiles', matchingProfile.id));
+          } catch (e) {
+            console.warn('Could not delete matching profile on email delete:', e);
+          }
+        }
+
+        sounds.playPowerOff();
+        setFeedbackMsg({
+          type: 'success',
+          text: `La autorización de "${deleteModal.email}" fue eliminada del filtro, su perfil borrado de la base de datos y su sesión revocada.`
+        });
+      } else if (deleteModal.type === 'profile') {
+        await deleteDoc(doc(db, 'profiles', deleteModal.id));
+
+        // Also remove from allowed_emails filter if email exists
+        if (deleteModal.email) {
+          try {
+            await deleteDoc(doc(db, 'allowed_emails', deleteModal.email.toLowerCase().trim()));
+          } catch (e) {
+            console.warn('Could not remove allowed_email for deleted profile:', e);
+          }
+        }
+
+        sounds.playPowerOff();
+        setFeedbackMsg({
+          type: 'success',
+          text: `El perfil y la autorización de "${deleteModal.name || deleteModal.email}" fueron eliminados completamente de Firebase.`
+        });
+      }
       setTimeout(() => setFeedbackMsg(null), 3500);
+      setDeleteModal(null);
     } catch (error: any) {
-      console.error('Error removing profile:', error);
+      console.error('Error in deletion:', error);
       setFeedbackMsg({
         type: 'error',
-        text: 'Error al eliminar perfil: ' + (error?.message || String(error))
+        text: 'Error al eliminar: ' + (error?.message || String(error))
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -740,7 +799,7 @@ export const TeamPanel: React.FC = () => {
                     {!isOwnerAdmin && (
                       <button
                         type="button"
-                        onClick={() => deleteProfile(p)}
+                        onClick={() => triggerDeleteProfile(p)}
                         className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                         title="Eliminar usuario"
                       >
@@ -955,7 +1014,7 @@ export const TeamPanel: React.FC = () => {
 
                       <button
                         type="button"
-                        onClick={() => removeAllowedEmail(item.id)}
+                        onClick={() => triggerRemoveAllowedEmail(item)}
                         className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
                         title="Revocar autorización y eliminar del filtro"
                       >
@@ -977,6 +1036,104 @@ export const TeamPanel: React.FC = () => {
           </div>
         </motion.div>
       )}
+
+      {/* Custom In-App Confirmation Modal (Bypasses browser iframe restrictions) */}
+      <AnimatePresence>
+        {deleteModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isDeleting && setDeleteModal(null)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs"
+            />
+
+            {/* Modal Dialog */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="relative w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 z-10"
+            >
+              <button
+                type="button"
+                onClick={() => !isDeleting && setDeleteModal(null)}
+                className="absolute top-4 right-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-xl transition-all"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-3.5 mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-red-50 text-red-600 border border-red-100 flex items-center justify-center shrink-0">
+                  <Trash2 size={22} />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-slate-900 text-base">
+                    {deleteModal.type === 'email' ? 'Revocar y Eliminar Correo' : 'Eliminar Perfil de Usuario'}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Esta acción surtirá efecto inmediatamente
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 rounded-2xl p-3.5 border border-slate-200/80 mb-5">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  {deleteModal.type === 'email' ? 'Correo a eliminar:' : 'Usuario a eliminar:'}
+                </div>
+                <div className="text-sm font-extrabold text-slate-900 truncate">
+                  {deleteModal.email}
+                </div>
+                {deleteModal.name && (
+                  <div className="text-xs text-slate-600 mt-0.5">
+                    {deleteModal.name}
+                  </div>
+                )}
+                <div className="mt-2.5 pt-2.5 border-t border-slate-200 text-xs text-slate-600 flex items-start gap-1.5">
+                  <AlertCircle size={14} className="text-amber-600 shrink-0 mt-0.5" />
+                  <span>
+                    {deleteModal.type === 'email'
+                      ? 'Al revocar este correo, el trabajador ya no podrá acceder ni iniciar sesión en el sistema.'
+                      : 'Se eliminará el perfil registrado de la base de datos.'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={() => setDeleteModal(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isDeleting}
+                  onClick={handleConfirmDelete}
+                  className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-red-600 hover:bg-red-700 active:scale-95 shadow-md shadow-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      <span>Eliminando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={14} />
+                      <span>{deleteModal.type === 'email' ? 'Sí, Revocar Correo' : 'Sí, Eliminar Perfil'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
