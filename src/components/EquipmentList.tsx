@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'motion/react';
 import { EquipmentDetails } from './EquipmentDetails';
+import { sounds } from '../utils/sounds';
 import { DndContext, DragOverlay, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragOverEvent, DragEndEvent, useDroppable, useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -908,6 +909,19 @@ export const EquipmentList: React.FC = () => {
     }
     
     const newStatus = item.status === 'on' ? 'off' : 'on';
+    
+    // Play appropriate sound effect based on action and reason
+    if (newStatus === 'on') {
+      sounds.playPowerOn();
+    } else {
+      if (reason === 'Apagado por falla en Corpoelec') {
+        sounds.playFalla();
+      } else if (reason === 'Apagado por corte eléctrico') {
+        sounds.playCorte();
+      } else {
+        sounds.playPowerOff();
+      }
+    }
     
     const now = Timestamp.now();
     

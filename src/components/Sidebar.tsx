@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useProfile } from '../context/ProfileContext';
+import { sounds } from '../utils/sounds';
 
 interface SidebarProps {
   activeTab: string;
@@ -77,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpe
                 <button
                   key={item.id}
                   onClick={() => {
+                    sounds.playClick();
                     setActiveTab(item.id);
                     if (window.innerWidth < 1024) setIsOpen(false);
                   }}

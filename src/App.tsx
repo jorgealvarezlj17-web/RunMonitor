@@ -17,6 +17,7 @@ import { Activity, ShieldCheck, Menu, X, BellRing, Zap, FileText, Loader2, User 
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { useProfile } from './context/ProfileContext';
+import { sounds } from './utils/sounds';
 
 const APP_VERSION = "1.2.0";
 
@@ -324,7 +325,10 @@ export default function App() {
                   {/* Botón de Menú a la izquierda */}
                   <div className="flex items-center">
                     <button 
-                      onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+                      onClick={() => {
+                        sounds.playClick();
+                        setIsSidebarOpen(!isSidebarOpen);
+                      }}
                       className="p-2 hover:bg-slate-100 active:scale-95 rounded-xl text-slate-700 transition-all border border-slate-200/60 bg-slate-50/50 shadow-xs"
                       title="Menú"
                     >

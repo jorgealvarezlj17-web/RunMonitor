@@ -37,6 +37,7 @@ import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { useProfile } from '../context/ProfileContext';
+import { sounds } from '../utils/sounds';
 
 interface LogEntry {
   id: string;
@@ -196,7 +197,10 @@ const TankGrid = ({
                     {/* Left Half - Aireación (AIR) */}
                     <button 
                       type="button"
-                      onClick={() => toggleTank('aireacion', id)}
+                      onClick={() => {
+                        sounds.playClick();
+                        toggleTank('aireacion', id);
+                      }}
                       title={`Tanque ${num} - Aireación (${isAirOn ? 'Encendido' : 'Apagado'})`}
                       className={`w-1/2 h-full flex flex-col items-center justify-center pt-5 transition-colors duration-200 cursor-pointer ${
                         isAirOn ? 'bg-cyan-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
@@ -211,7 +215,10 @@ const TankGrid = ({
                     {/* Right Half - Movimiento (MOV) */}
                     <button 
                       type="button"
-                      onClick={() => toggleTank('movimiento', id)}
+                      onClick={() => {
+                        sounds.playClick();
+                        toggleTank('movimiento', id);
+                      }}
                       title={`Tanque ${num} - Movimiento (${isMovOn ? 'Encendido' : 'Apagado'})`}
                       className={`w-1/2 h-full flex flex-col items-center justify-center pt-5 transition-colors duration-200 cursor-pointer ${
                         isMovOn ? 'bg-teal-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
@@ -800,6 +807,8 @@ export const CorteReporte: React.FC = () => {
       setMaintenanceRecords('');
       setTanquesAireacion([]);
       setTanquesMovimiento([]);
+
+      sounds.playSuccess();
 
     } catch (err) {
       console.error("Detailed error generating report:", err);
