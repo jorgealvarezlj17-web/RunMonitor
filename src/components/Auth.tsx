@@ -424,11 +424,11 @@ export const Auth: React.FC = () => {
             <img
               src={userPhoto}
               alt="Profile"
-              className="w-14 h-14 rounded-full border-2 border-white ring-2 ring-slate-200 hover:ring-cyan-500 object-cover shrink-0 shadow-md transition-all duration-300"
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-white ring-2 ring-slate-200 hover:ring-cyan-500 object-cover shrink-0 shadow-sm transition-all duration-200"
               referrerPolicy="no-referrer"
             />
           ) : (
-            <div className="w-14 h-14 rounded-full bg-cyan-100 hover:bg-cyan-200/80 flex items-center justify-center text-cyan-600 font-black border-2 border-white ring-2 ring-slate-200 hover:ring-cyan-500 shrink-0 uppercase text-xl shadow-md transition-all duration-300">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-cyan-100 hover:bg-cyan-200/80 flex items-center justify-center text-cyan-700 font-bold border-2 border-white ring-2 ring-slate-200 hover:ring-cyan-500 shrink-0 uppercase text-sm sm:text-base shadow-sm transition-all duration-200">
               {(userName || '?')[0]}
             </div>
           )}

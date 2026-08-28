@@ -6,9 +6,10 @@ interface TimePickerModalProps {
   onClose: () => void;
   onConfirm: (time24: string) => void;
   initialTime: string;
+  title?: string;
 }
 
-export const TimePickerModal: React.FC<TimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialTime }) => {
+export const TimePickerModal: React.FC<TimePickerModalProps> = ({ isOpen, onClose, onConfirm, initialTime, title }) => {
   const [hour, setHour] = useState(12);
   const [minute, setMinute] = useState(0);
   const [period, setPeriod] = useState<'AM' | 'PM'>('AM');
@@ -69,6 +70,11 @@ export const TimePickerModal: React.FC<TimePickerModalProps> = ({ isOpen, onClos
             initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
             className="bg-[#1E293B] p-8 rounded-[2.5rem] border border-white/10 shadow-2xl w-full max-w-sm"
           >
+            {title && (
+              <h3 className="text-center text-xs font-black uppercase tracking-widest text-cyan-400 mb-6 bg-cyan-950/60 py-2 px-4 rounded-xl border border-cyan-800/40">
+                {title}
+              </h3>
+            )}
             <div className="flex justify-center items-center gap-4 mb-8">
               <button 
                 onClick={() => setMode('hour')}

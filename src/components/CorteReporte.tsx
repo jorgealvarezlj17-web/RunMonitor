@@ -13,8 +13,11 @@ import {
   Settings,
   Send,
   Loader2,
-  MessageSquare
+  MessageSquare,
+  CalendarRange,
+  Zap
 } from 'lucide-react';
+import { TimePickerModal } from './TimePickerModal';
 import { 
   collection, 
   query, 
@@ -254,10 +257,22 @@ const TankGrid = ({
   );
 };
 
+const to12h = (time24: string) => {
+  if (!time24) return '';
+  let [h, m] = time24.split(':').map(Number);
+  const period = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${h}:${m.toString().padStart(2, '0')} ${period}`;
+};
+
 export const CorteReporte: React.FC = () => {
   const { profile } = useProfile();
   const isReadOnly = profile?.is_synced === false;
   const [startTime, setStartTime] = useState('18:00');
+  const [endTime, setEndTime] = useState('18:00');
+  const [rangeMode, setRangeMode] = useState<'scheduled' | 'until_now'>('scheduled');
+  const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end' | null>(null);
+
   const [observations, setObservations] = useState('');
   const [maintenanceRecords, setMaintenanceRecords] = useState('');
   const [tanquesAireacion, setTanquesAireacion] = useState<string[]>([]);
@@ -282,8 +297,6 @@ export const CorteReporte: React.FC = () => {
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
   const [sendWhatsAppStatus, setSendWhatsAppStatus] = useState<{ type: 'idle' | 'success' | 'error'; message?: string }>({ type: 'idle' });
 
-
-  
   const TANK_OPTIONS = Array.from({ length: 60 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
 
   const toggleTank = (type: 'aireacion' | 'movimiento', tankId: string) => {
@@ -341,10 +354,13 @@ export const CorteReporte: React.FC = () => {
   };
 
   useEffect(() => {
-    // Listen to app_settings for start time
+    // Listen to app_settings for shift time configurations
     const unsubscribeConfig = onSnapshot(doc(db, 'config', 'app_settings'), (docSnap) => {
       if (docSnap.exists()) {
-        setStartTime(docSnap.data().shiftStartTime || '18:00');
+        const data = docSnap.data();
+        if (data.shiftStartTime) setStartTime(data.shiftStartTime);
+        if (data.shiftEndTime) setEndTime(data.shiftEndTime);
+        if (data.shiftRangeMode) setRangeMode(data.shiftRangeMode);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'config/app_settings');
@@ -410,14 +426,38 @@ export const CorteReporte: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const end = new Date(); // Current time as end time
-      
-      // Calculate start Date based on user rule:
-      // Start time is always from the PREVIOUS day at the configured shift start hour.
+      const now = new Date();
+      let start: Date;
+      let end: Date;
+
       const [startH, startM] = startTime.split(':').map(Number);
-      const start = new Date(end);
-      start.setDate(end.getDate() - 1);
-      start.setHours(startH, startM, 0, 0);
+      const [endH, endM] = endTime.split(':').map(Number);
+
+      if (rangeMode === 'until_now') {
+        end = now;
+        start = new Date(now);
+        if (startH > now.getHours() || (startH === now.getHours() && startM > now.getMinutes())) {
+          start.setDate(now.getDate() - 1);
+        }
+        start.setHours(startH, startM, 0, 0);
+      } else {
+        end = new Date(now);
+        end.setHours(endH, endM, 0, 0);
+
+        start = new Date(end);
+        if (startH === endH && startM === endM) {
+          // 24-hour cycle from yesterday's start hour to today's end hour
+          start.setDate(end.getDate() - 1);
+          start.setHours(startH, startM, 0, 0);
+        } else if (startH > endH || (startH === endH && startM > endM)) {
+          // Crosses midnight (e.g. 18:00 yesterday to 06:00 today)
+          start.setDate(end.getDate() - 1);
+          start.setHours(startH, startM, 0, 0);
+        } else {
+          // Same day (e.g. 06:00 today to 18:00 today)
+          start.setHours(startH, startM, 0, 0);
+        }
+      }
 
       const startTs = Timestamp.fromDate(start);
       const endTs = Timestamp.fromDate(end);
@@ -512,8 +552,8 @@ export const CorteReporte: React.FC = () => {
       });
 
       // Format report
-      const startStr = format(start, "dd/MM/yy");
-      const endStr = format(end, "dd/MM/yy");
+      const startStr = `${format(start, "dd/MM/yy")} (${format(start, "h:mma")})`;
+      const endStr = `${format(end, "dd/MM/yy")} (${format(end, "h:mma")})`;
       const currentOp = profile?.full_name || auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Operador';
 
       let text = `👤 OP. EN TURNO: ${currentOp}\n`;
@@ -893,14 +933,105 @@ export const CorteReporte: React.FC = () => {
             </div>
           )}
 
-          <div className="flex items-center gap-3 mb-8">
+          <div className="flex items-center gap-3 mb-6">
             <div className="w-12 h-12 bg-cyan-50 text-cyan-600 rounded-2xl flex items-center justify-center">
               <FileText size={24} />
             </div>
-            <h3 className="text-xl font-bold text-slate-900">Datos del Turno</h3>
+            <div>
+              <h3 className="text-xl font-bold text-slate-900">Datos del Turno</h3>
+              <p className="text-xs text-slate-500 font-medium">Configura el rango y notas operativas</p>
+            </div>
           </div>
 
           <div className="space-y-6 flex-1">
+            {/* Rango de Horario de Información Programado / Personalizado */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Clock size={15} className="text-cyan-600" />
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Rango del Corte</span>
+                </div>
+                <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[10px] font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setRangeMode('scheduled');
+                    }}
+                    className={`px-2 py-0.5 rounded-md transition-all ${
+                      rangeMode === 'scheduled' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Programado
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setRangeMode('until_now');
+                    }}
+                    className={`px-2 py-0.5 rounded-md transition-all ${
+                      rangeMode === 'until_now' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                  >
+                    Hasta Ahora
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {/* Start Time Pill */}
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Inicio (Desde)</div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setTimePickerTarget('start');
+                    }}
+                    className="w-full text-left font-mono font-black text-sm text-cyan-700 hover:text-cyan-600 flex items-center justify-between"
+                  >
+                    <span>{to12h(startTime)}</span>
+                    <span className="text-[10px] font-sans font-bold bg-cyan-50 px-1.5 py-0.5 rounded text-cyan-600 border border-cyan-200/60">
+                      {startTime}
+                    </span>
+                  </button>
+                </div>
+
+                {/* End Time Pill */}
+                <div className="bg-white p-2.5 rounded-xl border border-slate-200/80">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cierre (Hasta)</div>
+                  <button
+                    type="button"
+                    disabled={rangeMode === 'until_now'}
+                    onClick={() => {
+                      sounds.playClick();
+                      setTimePickerTarget('end');
+                    }}
+                    className={`w-full text-left font-mono font-black text-sm flex items-center justify-between ${
+                      rangeMode === 'until_now' ? 'text-slate-400 cursor-not-allowed' : 'text-teal-700 hover:text-teal-600'
+                    }`}
+                  >
+                    <span>{rangeMode === 'until_now' ? 'En vivo' : to12h(endTime)}</span>
+                    <span className={`text-[10px] font-sans font-bold px-1.5 py-0.5 rounded border ${
+                      rangeMode === 'until_now' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-teal-50 text-teal-700 border-teal-200/60'
+                    }`}>
+                      {rangeMode === 'until_now' ? 'Ahora' : endTime}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-slate-500 font-medium leading-tight">
+                {rangeMode === 'until_now'
+                  ? `Recopilará datos desde las ${to12h(startTime)} hasta el momento en que pulses generar.`
+                  : startTime === endTime
+                    ? `Ciclo de 24h: recopilará datos desde las ${to12h(startTime)} de ayer hasta las ${to12h(endTime)} de hoy.`
+                    : `Recopilará datos desde las ${to12h(startTime)} hasta las ${to12h(endTime)}.`
+                }
+              </p>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-2">
@@ -1143,6 +1274,23 @@ export const CorteReporte: React.FC = () => {
           )}
         </motion.div>
       </div>
+
+      {/* Time Picker Modal for Custom Start/End adjustments */}
+      <TimePickerModal
+        isOpen={timePickerTarget !== null}
+        onClose={() => setTimePickerTarget(null)}
+        onConfirm={(time24) => {
+          sounds.playClick();
+          if (timePickerTarget === 'start') {
+            setStartTime(time24);
+          } else if (timePickerTarget === 'end') {
+            setEndTime(time24);
+          }
+          setTimePickerTarget(null);
+        }}
+        initialTime={timePickerTarget === 'start' ? startTime : endTime}
+        title={timePickerTarget === 'start' ? 'Hora de Inicio del Corte' : 'Hora de Cierre del Corte'}
+      />
     </div>
   );
 };

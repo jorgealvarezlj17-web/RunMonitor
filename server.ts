@@ -179,12 +179,49 @@ async function startServer() {
       const appConfig = await getAppConfig();
       
       const now = new Date();
-      const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      const tsThreshold = admin.firestore.Timestamp.fromDate(twentyFourHoursAgo);
+      let start: Date;
+      let end: Date;
 
-      // Fetch logs from the last 24 hours
+      const startTime = appConfig?.shiftStartTime || '18:00';
+      const endTime = appConfig?.shiftEndTime || '18:00';
+      const rangeMode = appConfig?.shiftRangeMode || 'scheduled';
+
+      const [startH, startM] = startTime.split(':').map(Number);
+      const [endH, endM] = endTime.split(':').map(Number);
+
+      if (rangeMode === 'until_now') {
+        end = now;
+        start = new Date(now);
+        if (startH > now.getHours() || (startH === now.getHours() && startM > now.getMinutes())) {
+          start.setDate(now.getDate() - 1);
+        }
+        start.setHours(startH, startM, 0, 0);
+      } else {
+        end = new Date(now);
+        end.setHours(endH, endM, 0, 0);
+
+        start = new Date(end);
+        if (startH === endH && startM === endM) {
+          start.setDate(end.getDate() - 1);
+          start.setHours(startH, startM, 0, 0);
+        } else if (startH > endH || (startH === endH && startM > endM)) {
+          start.setDate(end.getDate() - 1);
+          start.setHours(startH, startM, 0, 0);
+        } else {
+          start.setHours(startH, startM, 0, 0);
+        }
+      }
+
+      const tsThreshold = admin.firestore.Timestamp.fromDate(start);
+      const tsEnd = admin.firestore.Timestamp.fromDate(end);
+
+      // Fetch logs in window
       const logsRef = currentDb.collection('logs');
-      const querySnapshot = await logsRef.where('timestamp', '>=', tsThreshold).orderBy('timestamp', 'desc').get();
+      const querySnapshot = await logsRef
+        .where('timestamp', '>=', tsThreshold)
+        .where('timestamp', '<=', tsEnd)
+        .orderBy('timestamp', 'desc')
+        .get();
 
       // Fetch equipment names for context
       const equipRef = currentDb.collection('equipment');
