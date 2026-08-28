@@ -273,6 +273,12 @@ export const CorteReporte: React.FC = () => {
   const [rangeMode, setRangeMode] = useState<'scheduled' | 'until_now'>('scheduled');
   const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end' | null>(null);
 
+  const updateReportRange = (newStart: string, newEnd: string, newMode: 'scheduled' | 'until_now') => {
+    setStartTime(newStart);
+    setEndTime(newEnd);
+    setRangeMode(newMode);
+  };
+
   const [observations, setObservations] = useState('');
   const [maintenanceRecords, setMaintenanceRecords] = useState('');
   const [tanquesAireacion, setTanquesAireacion] = useState<string[]>([]);
@@ -353,6 +359,8 @@ export const CorteReporte: React.FC = () => {
     }
   };
 
+  const [autoSendEnabled, setAutoSendEnabled] = useState(true);
+
   useEffect(() => {
     // Listen to app_settings for shift time configurations
     const unsubscribeConfig = onSnapshot(doc(db, 'config', 'app_settings'), (docSnap) => {
@@ -361,6 +369,7 @@ export const CorteReporte: React.FC = () => {
         if (data.shiftStartTime) setStartTime(data.shiftStartTime);
         if (data.shiftEndTime) setEndTime(data.shiftEndTime);
         if (data.shiftRangeMode) setRangeMode(data.shiftRangeMode);
+        if (data.autoSendWhatsAppEnabled !== undefined) setAutoSendEnabled(data.autoSendWhatsAppEnabled);
       }
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'config/app_settings');
@@ -420,6 +429,8 @@ export const CorteReporte: React.FC = () => {
       unsubscribePrevTanks();
     };
   }, []);
+
+  const hasAutoSentRef = useRef<string | null>(null);
 
   const generateReport = async () => {
     if (isReadOnly) return;
@@ -810,10 +821,7 @@ export const CorteReporte: React.FC = () => {
       }
 
       if (!hasAnyData && !observations.trim() && powerEvents.length === 0 && (!initialPowerState || initialPowerState.type === 'ok') && !maintenanceRecords.trim()) {
-        setError('No se encontraron registros ni equipos activos en el rango seleccionado.');
-        setReportText('');
-        setLoading(false);
-        return;
+        text += `\nNo se registraron movimientos en este turno.\n`;
       }
 
       const finalReport = text.trim();
@@ -869,8 +877,9 @@ export const CorteReporte: React.FC = () => {
     setTimeout(() => setCopied(false), 3000);
   };
 
-  const handleSendToWhatsApp = async () => {
-    if (!reportText || isSendingWhatsApp) return;
+  const handleSendToWhatsApp = async (customText?: string) => {
+    const textToSend = customText || reportText;
+    if (!textToSend || isSendingWhatsApp) return;
     setIsSendingWhatsApp(true);
     setSendWhatsAppStatus({ type: 'idle' });
 
@@ -878,7 +887,7 @@ export const CorteReporte: React.FC = () => {
       const response = await fetch('/api/send-whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: reportText })
+        body: JSON.stringify({ message: textToSend })
       });
 
       const data = await response.json();
@@ -944,19 +953,19 @@ export const CorteReporte: React.FC = () => {
           </div>
 
           <div className="space-y-6 flex-1">
-            {/* Rango de Horario de Información Programado / Personalizado */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+            {/* Visualización del Rango de Corte */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4 shadow-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5">
-                  <Clock size={15} className="text-cyan-600" />
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Rango del Corte</span>
+                  <CalendarRange size={15} className="text-cyan-600" />
+                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Rango del Reporte</span>
                 </div>
                 <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[10px] font-bold">
                   <button
                     type="button"
                     onClick={() => {
                       sounds.playClick();
-                      setRangeMode('scheduled');
+                      updateReportRange(startTime, endTime, 'scheduled');
                     }}
                     className={`px-2 py-0.5 rounded-md transition-all ${
                       rangeMode === 'scheduled' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
@@ -968,7 +977,7 @@ export const CorteReporte: React.FC = () => {
                     type="button"
                     onClick={() => {
                       sounds.playClick();
-                      setRangeMode('until_now');
+                      updateReportRange(startTime, endTime, 'until_now');
                     }}
                     className={`px-2 py-0.5 rounded-md transition-all ${
                       rangeMode === 'until_now' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
@@ -979,56 +988,23 @@ export const CorteReporte: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                {/* Start Time Pill */}
-                <div className="bg-white p-2.5 rounded-xl border border-slate-200/80">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Inicio (Desde)</div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      setTimePickerTarget('start');
-                    }}
-                    className="w-full text-left font-mono font-black text-sm text-cyan-700 hover:text-cyan-600 flex items-center justify-between"
-                  >
-                    <span>{to12h(startTime)}</span>
-                    <span className="text-[10px] font-sans font-bold bg-cyan-50 px-1.5 py-0.5 rounded text-cyan-600 border border-cyan-200/60">
-                      {startTime}
-                    </span>
-                  </button>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Inicio (Desde)</span>
+                  <span className="font-mono font-black text-sm text-slate-800">{to12h(startTime)}</span>
                 </div>
-
-                {/* End Time Pill */}
-                <div className="bg-white p-2.5 rounded-xl border border-slate-200/80">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cierre (Hasta)</div>
-                  <button
-                    type="button"
-                    disabled={rangeMode === 'until_now'}
-                    onClick={() => {
-                      sounds.playClick();
-                      setTimePickerTarget('end');
-                    }}
-                    className={`w-full text-left font-mono font-black text-sm flex items-center justify-between ${
-                      rangeMode === 'until_now' ? 'text-slate-400 cursor-not-allowed' : 'text-teal-700 hover:text-teal-600'
-                    }`}
-                  >
-                    <span>{rangeMode === 'until_now' ? 'En vivo' : to12h(endTime)}</span>
-                    <span className={`text-[10px] font-sans font-bold px-1.5 py-0.5 rounded border ${
-                      rangeMode === 'until_now' ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-teal-50 text-teal-700 border-teal-200/60'
-                    }`}>
-                      {rangeMode === 'until_now' ? 'Ahora' : endTime}
-                    </span>
-                  </button>
+                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
+                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cierre (Hasta)</span>
+                  <span className="font-mono font-black text-sm text-slate-800">
+                    {rangeMode === 'until_now' ? 'En vivo (Ahora)' : to12h(endTime)}
+                  </span>
                 </div>
               </div>
 
               <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                {rangeMode === 'until_now'
-                  ? `Recopilará datos desde las ${to12h(startTime)} hasta el momento en que pulses generar.`
-                  : startTime === endTime
-                    ? `Ciclo de 24h: recopilará datos desde las ${to12h(startTime)} de ayer hasta las ${to12h(endTime)} de hoy.`
-                    : `Recopilará datos desde las ${to12h(startTime)} hasta las ${to12h(endTime)}.`
-                }
+                {rangeMode === 'until_now' 
+                  ? 'El reporte abarcará desde la hora de inicio hasta el momento actual.'
+                  : 'El reporte abarcará exactamente el turno configurado. Para modificar estas horas, ve a la sección de Configuración.'}
               </p>
             </div>
 
@@ -1219,7 +1195,12 @@ export const CorteReporte: React.FC = () => {
                   className="h-full flex flex-col items-center justify-center text-center p-4"
                 >
                   <FileText size={48} className="text-slate-300 mb-4" />
-                  <p className="text-slate-500 font-medium">Configura los datos del turno y presiona "Generar Reporte".</p>
+                  <p className="text-slate-500 font-medium">
+                    {autoSendEnabled 
+                      ? 'El reporte se generará y enviará automáticamente al grupo cuando la cuenta regresiva llegue a cero.'
+                      : 'Configura los datos del turno y presiona "Generar Reporte".'
+                    }
+                  </p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1253,10 +1234,10 @@ export const CorteReporte: React.FC = () => {
               </button>
 
               <button
-                onClick={handleSendToWhatsApp}
+                onClick={() => handleSendToWhatsApp()}
                 disabled={isSendingWhatsApp}
                 className="w-full sm:w-2/3 py-3.5 px-6 rounded-xl font-black transition-all flex items-center justify-center gap-2.5 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white shadow-lg shadow-emerald-600/25 text-base disabled:opacity-50"
-                title="Enviar reporte directamente al grupo Reportes"
+                title="Enviar reporte manualmente al grupo de WhatsApp"
               >
                 {isSendingWhatsApp ? (
                   <>
@@ -1266,7 +1247,7 @@ export const CorteReporte: React.FC = () => {
                 ) : (
                   <>
                     <Send size={20} />
-                    <span>Enviar Reporte</span>
+                    <span>Forzar Envío Manual</span>
                   </>
                 )}
               </button>
@@ -1282,9 +1263,9 @@ export const CorteReporte: React.FC = () => {
         onConfirm={(time24) => {
           sounds.playClick();
           if (timePickerTarget === 'start') {
-            setStartTime(time24);
+            updateReportRange(time24, endTime, rangeMode);
           } else if (timePickerTarget === 'end') {
-            setEndTime(time24);
+            updateReportRange(startTime, time24, rangeMode);
           }
           setTimePickerTarget(null);
         }}

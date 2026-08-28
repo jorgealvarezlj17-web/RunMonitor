@@ -271,7 +271,7 @@ export const Auth: React.FC = () => {
         } else if (errorCode === 'auth/operation-not-allowed') {
           setError('El proveedor de Google no está habilitado en Firebase Auth.');
         } else if (errorCode === 'auth/unauthorized-domain') {
-          setError('Este dominio web no está autorizado en Firebase Authentication.');
+          setError('Este dominio web no está autorizado en Firebase Authentication. Para solucionarlo, agrega este dominio en tu Consola de Firebase (Authentication > Configuración > Dominios autorizados) o utiliza el acceso con Correo y Contraseña que funciona de inmediato sin restricciones.');
         } else {
           setError(error?.message || 'Error al iniciar sesión con Google. Inténtalo de nuevo o ingresa con correo y contraseña.');
         }

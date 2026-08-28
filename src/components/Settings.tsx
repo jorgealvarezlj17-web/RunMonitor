@@ -41,6 +41,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { sounds } from '../utils/sounds';
+import { format } from 'date-fns';
 
 interface Category {
   id: string;
@@ -60,6 +61,7 @@ interface AppConfig {
   shiftStartTime?: string;
   shiftEndTime?: string;
   shiftRangeMode?: 'scheduled' | 'until_now';
+  autoSendWhatsAppEnabled?: boolean;
 }
 
 const to12h = (time24: string) => {
@@ -92,7 +94,8 @@ export const Settings: React.FC = () => {
     reportCronTime: '0 18 * * *', // Default 6 PM
     shiftStartTime: '18:00',
     shiftEndTime: '18:00',
-    shiftRangeMode: 'scheduled'
+    shiftRangeMode: 'scheduled',
+    autoSendWhatsAppEnabled: true
   });
 
   // Time picker state
@@ -112,6 +115,40 @@ export const Settings: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetStatus, setResetStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [timeRemaining, setTimeRemaining] = useState<string>('--:--:--');
+
+  useEffect(() => {
+    const calculateCountdown = () => {
+      const endTime = config.shiftEndTime || '18:00';
+      const [endH, endM] = endTime.split(':').map(Number);
+      
+      const now = new Date();
+      const target = new Date(now);
+      target.setHours(endH, endM, 0, 0);
+
+      if (now.getTime() > target.getTime()) {
+        target.setDate(target.getDate() + 1);
+      }
+
+      const diff = target.getTime() - now.getTime();
+      if (diff <= 0) {
+        setTimeRemaining('00:00:00 (Cercano al envío)');
+        return;
+      }
+
+      const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const minutes = Math.floor((diff / (1000 * 60)) % 60);
+      const seconds = Math.floor((diff / 1000) % 60);
+
+      setTimeRemaining(
+        `${String(hours).padStart(2, '0')}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`
+      );
+    };
+
+    calculateCountdown();
+    const timer = setInterval(calculateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [config.shiftEndTime]);
 
   // Listen to categories and config in Firestore
   useEffect(() => {
@@ -168,7 +205,22 @@ export const Settings: React.FC = () => {
     setIsSavingConfig(true);
     setSaveStatus('idle');
     try {
-      await setDoc(doc(db, 'config', 'app_settings'), config, { merge: true });
+      const configToSave: any = { ...config };
+      if (config.shiftEndTime) {
+        const [endH, endM] = config.shiftEndTime.split(':').map(Number);
+        if (!isNaN(endH) && !isNaN(endM)) {
+          const now = new Date();
+          const endToday = new Date(now);
+          endToday.setHours(endH, endM, 0, 0);
+          if (now >= endToday) {
+            // Mark today's shift as already processed when saving after the shift time,
+            // to avoid sending an unrequested retroactive report.
+            configToSave.lastAutoSentShiftKey = `${config.shiftEndTime}_${format(now, 'yyyy-MM-dd')}`;
+          }
+        }
+      }
+
+      await setDoc(doc(db, 'config', 'app_settings'), configToSave, { merge: true });
       sounds.playSuccess();
       setSaveStatus('success');
       setTimeout(() => setSaveStatus('idle'), 3500);
@@ -584,76 +636,130 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
 
-              {/* Start & End Time Pickers */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Start Time */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                      <Clock size={14} className="text-cyan-600" />
-                      Hora de Inicio del Corte
-                    </label>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Inicio</span>
+              {/* Selector de Rango de Turno */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 shadow-xs mt-4">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-2">
+                    <CalendarRange size={18} className="text-cyan-600" />
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Duración del Turno</h3>
+                      <p className="text-[11px] text-slate-500 font-medium">Establece la hora exacta de inicio y cierre</p>
+                    </div>
                   </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      setTimePickerTarget('start');
-                    }}
-                    disabled={isReadOnly || !isAdmin}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 hover:border-cyan-500 rounded-xl text-slate-900 font-mono font-black text-lg flex items-center justify-between shadow-xs transition-all disabled:opacity-50"
-                  >
-                    <span>{to12h(config.shiftStartTime || '18:00')}</span>
-                    <span className="text-xs font-sans font-bold text-cyan-600 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200/60">
-                      {config.shiftStartTime || '18:00'}
-                    </span>
-                  </button>
-                  <p className="text-[11px] text-slate-500">
-                    Hora desde la cual el sistema comienza a contabilizar eventos y horas de servicio.
-                  </p>
+                  <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[10px] font-bold">
+                    <button
+                      type="button"
+                      disabled={isReadOnly || !isAdmin}
+                      onClick={() => {
+                        sounds.playClick();
+                        setConfig({ ...config, shiftRangeMode: 'scheduled' });
+                      }}
+                      className={`px-3 py-1.5 rounded-md transition-all ${
+                        config.shiftRangeMode === 'scheduled' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Programado
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isReadOnly || !isAdmin}
+                      onClick={() => {
+                        sounds.playClick();
+                        setConfig({ ...config, shiftRangeMode: 'until_now' });
+                      }}
+                      className={`px-3 py-1.5 rounded-md transition-all ${
+                        config.shiftRangeMode === 'until_now' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
+                      }`}
+                    >
+                      Hasta Ahora
+                    </button>
+                  </div>
                 </div>
 
-                {/* End Time */}
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
-                      <Clock size={14} className="text-teal-600" />
-                      Hora de Fin del Corte
-                    </label>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Cierre</span>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Hora de Inicio */}
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-cyan-400">
+                      <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Inicio (Desde)</span>
+                      <button 
+                        disabled={isReadOnly || !isAdmin}
+                        onClick={() => {
+                          sounds.playClick();
+                          setTimePickerTarget('start');
+                        }}
+                        className="w-full flex items-center justify-between group disabled:opacity-50"
+                      >
+                        <span className="font-mono font-black text-2xl text-slate-800 group-hover:text-cyan-600 transition-colors">
+                          {to12h(config.shiftStartTime || '06:00')}
+                        </span>
+                        <span className="text-xs font-sans font-bold text-cyan-700 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200/60">
+                          {config.shiftStartTime || '06:00'}
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Hora de Cierre */}
+                    <div className={`bg-white p-4 rounded-xl border transition-all ${
+                      config.shiftRangeMode === 'until_now' 
+                        ? 'border-slate-200 opacity-60' 
+                        : 'border-slate-200 shadow-sm hover:border-teal-400'
+                    }`}>
+                      <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Cierre (Hasta)</span>
+                      <button 
+                        disabled={config.shiftRangeMode === 'until_now' || isReadOnly || !isAdmin}
+                        onClick={() => {
+                          sounds.playClick();
+                          setTimePickerTarget('end');
+                        }}
+                        className="w-full flex items-center justify-between group disabled:opacity-50"
+                      >
+                        <span className={`font-mono font-black text-2xl transition-colors ${
+                          config.shiftRangeMode === 'until_now' ? 'text-slate-400' : 'text-slate-800 group-hover:text-teal-600'
+                        }`}>
+                          {config.shiftRangeMode === 'until_now' ? 'En vivo' : to12h(config.shiftEndTime || '18:00')}
+                        </span>
+                        <span className={`text-xs font-sans font-bold px-2.5 py-1 rounded-lg border ${
+                          config.shiftRangeMode === 'until_now'
+                            ? 'bg-slate-100 text-slate-500 border-slate-200'
+                            : 'text-teal-700 bg-teal-50 border-teal-200/60'
+                        }`}>
+                          {config.shiftRangeMode === 'until_now' ? 'Ahora' : (config.shiftEndTime || '18:00')}
+                        </span>
+                      </button>
+                    </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      setTimePickerTarget('end');
-                    }}
-                    disabled={isReadOnly || !isAdmin || config.shiftRangeMode === 'until_now'}
-                    className={`w-full px-4 py-3 bg-white border rounded-xl font-mono font-black text-lg flex items-center justify-between shadow-xs transition-all disabled:opacity-50 ${
-                      config.shiftRangeMode === 'until_now'
-                        ? 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'
-                        : 'border-slate-200 hover:border-teal-500 text-slate-900'
-                    }`}
-                  >
-                    <span>
-                      {config.shiftRangeMode === 'until_now' 
-                        ? 'Hora Actual (En vivo)' 
-                        : to12h(config.shiftEndTime || '18:00')}
-                    </span>
-                    <span className={`text-xs font-sans font-bold px-2.5 py-1 rounded-lg border ${
-                      config.shiftRangeMode === 'until_now'
-                        ? 'bg-slate-200 text-slate-500 border-slate-300'
-                        : 'text-teal-700 bg-teal-50 border-teal-200/60'
-                    }`}>
-                      {config.shiftRangeMode === 'until_now' ? 'Tiempo Real' : (config.shiftEndTime || '18:00')}
-                    </span>
-                  </button>
-                  <p className="text-[11px] text-slate-500">
-                    Hora límite donde concluye el ciclo de evaluación para este turno.
-                  </p>
+                  {/* Visualización Minimalista del Rango */}
+                  <div className="pt-2 pb-1 px-1">
+                    <div className="h-2 bg-slate-200 rounded-full relative overflow-hidden flex items-center shadow-inner">
+                      {(() => {
+                        const sTime = config.shiftStartTime || '06:00';
+                        const eTime = config.shiftEndTime || '18:00';
+                        const [sH, sM] = sTime.split(':').map(Number);
+                        const [eH, eM] = eTime.split(':').map(Number);
+                        const startMinutes = sH * 60 + sM;
+                        let endMinutes = eH * 60 + eM;
+                        if (endMinutes <= startMinutes && config.shiftRangeMode === 'scheduled') {
+                          endMinutes += 24 * 60;
+                        }
+                        const totalSpan = 24 * 60;
+                        const leftPercent = Math.min(100, Math.max(0, (startMinutes / totalSpan) * 100));
+                        const widthPercent = Math.min(100 - leftPercent, Math.max(2, ((endMinutes - startMinutes) / totalSpan) * 100));
+
+                        return (
+                          <div
+                            className="absolute h-full bg-gradient-to-r from-cyan-400 to-teal-400 rounded-full opacity-90 transition-all shadow-sm"
+                            style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                          />
+                        );
+                      })()}
+                    </div>
+                    <div className="flex justify-between text-[10px] font-bold text-slate-400 mt-2 px-1">
+                      <span>00:00</span>
+                      <span>12:00</span>
+                      <span>23:59</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -667,59 +773,54 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Card 2: Envío Automático / Cron UTC */}
+            {/* Card 2: Envío Automático */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-4">
               <div className="flex items-center gap-3">
                 <div className="p-3 bg-slate-100 text-slate-700 rounded-2xl border border-slate-200/60">
                   <Radio size={22} />
                 </div>
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Programación Automática (Servidor Cron)</h2>
-                  <p className="text-xs text-slate-500 font-medium">Hora a la que el servidor enviará el reporte automático si está habilitado</p>
+                  <h2 className="text-lg font-bold text-slate-900">Envío Automático a WhatsApp</h2>
+                  <p className="text-xs text-slate-500 font-medium">El reporte se genera y envía automáticamente a la Hora de Fin del Corte configurada arriba</p>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Expresión Cron (Horario UTC)
-                </label>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <input
-                    type="text"
-                    value={config.reportCronTime || '0 18 * * *'}
-                    onChange={(e) => setConfig({ ...config, reportCronTime: e.target.value })}
-                    disabled={isReadOnly || !isAdmin}
-                    className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-cyan-500/50 outline-none transition-all disabled:opacity-50"
-                    placeholder="0 18 * * *"
-                  />
-                  <div className="flex gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setConfig({ ...config, reportCronTime: '0 22 * * *' });
-                      }}
+                <div className="pt-2 flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-bold text-slate-800">Activar Reportes Automáticos a WhatsApp</p>
+                    <p className="text-xs text-slate-500 font-medium">El servidor recolectará los eventos, guardará el reporte y lo enviará a WhatsApp exactamente a la hora de fin del turno.</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={config.autoSendWhatsAppEnabled ?? true}
+                      onChange={(e) => setConfig({ ...config, autoSendWhatsAppEnabled: e.target.checked })}
                       disabled={isReadOnly || !isAdmin}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
-                    >
-                      06:00 PM VET (22:00 UTC)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        sounds.playClick();
-                        setConfig({ ...config, reportCronTime: '0 10 * * *' });
-                      }}
-                      disabled={isReadOnly || !isAdmin}
-                      className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all"
-                    >
-                      06:00 AM VET (10:00 UTC)
-                    </button>
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600 disabled:opacity-50"></div>
+                  </label>
+                </div>
+
+                {/* Live Countdown Widget */}
+                <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold">
+                      <Clock size={20} />
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo Restante para Envío Automático</p>
+                      <p className="text-lg font-mono font-black text-slate-900 mt-0.5">{timeRemaining}</p>
+                    </div>
+                  </div>
+                  <div className="text-right sm:text-right">
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-extrabold rounded-full border border-emerald-200/60">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                      Hora Cierre: {config.shiftEndTime || '18:00'}
+                    </span>
                   </div>
                 </div>
-                <p className="text-[11px] text-slate-400">
-                  Formato estándar: <code>minuto hora día_mes mes día_semana</code> (Hora del servidor en UTC).
-                </p>
               </div>
             </div>
 

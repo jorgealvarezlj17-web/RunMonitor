@@ -142,6 +142,7 @@ export const TeamPanel: React.FC = () => {
 
   // Helper to check if a profile is actively looking at the app right now
   const isProfileOnline = (p: Profile): boolean => {
+    if (isMasterAdminEmail(p.email)) return false;
     if (!p.is_online) return false;
     if (!p.last_connection) return false;
     const diffMs = Date.now() - new Date(p.last_connection).getTime();
@@ -150,8 +151,9 @@ export const TeamPanel: React.FC = () => {
 
   // Stats Calculations
   const stats = useMemo(() => {
-    const totalUsers = profiles.length;
-    const onlineUsers = profiles.filter(isProfileOnline).length;
+    const operatorProfiles = profiles.filter(p => !isMasterAdminEmail(p.email));
+    const totalUsers = operatorProfiles.length;
+    const onlineUsers = operatorProfiles.filter(isProfileOnline).length;
     const offlineUsers = Math.max(0, totalUsers - onlineUsers);
     const totalAllowed = allowedEmails.length;
     const activeAllowed = allowedEmails.filter(a => a.status !== 'inactive').length;
@@ -358,6 +360,9 @@ export const TeamPanel: React.FC = () => {
   // Filtered profiles for User Tab
   const filteredProfiles = useMemo(() => {
     return profiles.filter((p) => {
+      // Exclude master admin profile from the operator list
+      if (isMasterAdminEmail(p.email)) return false;
+
       const isOnline = isProfileOnline(p);
       const emailLower = p.email?.toLowerCase() || '';
       const nameLower = p.full_name?.toLowerCase() || '';

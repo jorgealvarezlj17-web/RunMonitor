@@ -13,6 +13,9 @@ import cors from "cors";
 // Load environment variables
 dotenv.config();
 
+// Ensure all Date evaluations are in local time
+process.env.TZ = 'America/Caracas';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -166,151 +169,7 @@ async function startServer() {
     }
   }
 
-  async function generateAndSendDailyReport() {
-    const currentDb = await ensureValidDb();
-    if (!currentDb) {
-      console.warn("Firestore not initialized, cannot generate report");
-      return;
-    }
-    
-    console.log("Generating daily report...");
-    
-    try {
-      const appConfig = await getAppConfig();
-      
-      const now = new Date();
-      let start: Date;
-      let end: Date;
-
-      const startTime = appConfig?.shiftStartTime || '18:00';
-      const endTime = appConfig?.shiftEndTime || '18:00';
-      const rangeMode = appConfig?.shiftRangeMode || 'scheduled';
-
-      const [startH, startM] = startTime.split(':').map(Number);
-      const [endH, endM] = endTime.split(':').map(Number);
-
-      if (rangeMode === 'until_now') {
-        end = now;
-        start = new Date(now);
-        if (startH > now.getHours() || (startH === now.getHours() && startM > now.getMinutes())) {
-          start.setDate(now.getDate() - 1);
-        }
-        start.setHours(startH, startM, 0, 0);
-      } else {
-        end = new Date(now);
-        end.setHours(endH, endM, 0, 0);
-
-        start = new Date(end);
-        if (startH === endH && startM === endM) {
-          start.setDate(end.getDate() - 1);
-          start.setHours(startH, startM, 0, 0);
-        } else if (startH > endH || (startH === endH && startM > endM)) {
-          start.setDate(end.getDate() - 1);
-          start.setHours(startH, startM, 0, 0);
-        } else {
-          start.setHours(startH, startM, 0, 0);
-        }
-      }
-
-      const tsThreshold = admin.firestore.Timestamp.fromDate(start);
-      const tsEnd = admin.firestore.Timestamp.fromDate(end);
-
-      // Fetch logs in window
-      const logsRef = currentDb.collection('logs');
-      const querySnapshot = await logsRef
-        .where('timestamp', '>=', tsThreshold)
-        .where('timestamp', '<=', tsEnd)
-        .orderBy('timestamp', 'desc')
-        .get();
-
-      // Fetch equipment names for context
-      const equipRef = currentDb.collection('equipment');
-      const equipSnapshot = await equipRef.get();
-      const equipmentMap: Record<string, string> = {};
-      equipSnapshot.forEach(doc => {
-        equipmentMap[doc.id] = doc.data().name || 'Desconocido';
-      });
-
-      let continuityCount = 0;
-      let failureCount = 0;
-      const details: string[] = [];
-
-      querySnapshot.forEach(doc => {
-        const data = doc.data();
-        const equipName = equipmentMap[data.equipmentId] || 'Equipo Desconocido';
-        const action = data.action === 'on' ? 'CONTINUIDAD DE SERVICIO' : 'FALLA EN EL SERVICIO';
-        
-        if (data.action === 'on') continuityCount++;
-        else failureCount++;
-
-        const time = data.timestamp.toDate().toLocaleTimeString();
-        details.push(`- ${time}: ${equipName} -> ${action}`);
-      });
-
-      const reportHeader = "🚨 *REPORTE AUTOMÁTICO DE SISTEMA* 🚨\n\n";
-      const summary = `*Resumen de las últimas 24h:*\n` +
-                      `✅ Continuidad de Servicio: ${continuityCount}\n` +
-                      `❌ Fallas en el Servicio: ${failureCount}\n\n` +
-                      `*Detalle de Eventos:*\n` +
-                      (details.length > 0 ? details.slice(0, 15).join('\n') + (details.length > 15 ? "\n... (más eventos)" : "") : "Sin eventos registrados.");
-
-      let fullMessage = reportHeader + summary;
-
-      // Fetch shift observations
-      const obsDoc = await currentDb.collection('config').doc('current_shift_observations').get();
-      const observations = obsDoc.exists ? obsDoc.data()?.observations || '' : '';
-
-      if (observations.trim()) {
-        fullMessage += `\n\n📝 *NOTAS Y OBSERVACIONES:*\n${observations.trim()}`;
-      }
-
-      const result = await sendWhatsAppMessage(appConfig, fullMessage);
-
-      if (result.success) {
-        // Clear observations after sending
-        await currentDb.collection('config').doc('current_shift_observations').set({
-          observations: '',
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        console.log("Daily report sent successfully to WhatsApp.");
-      }
-    } catch (error) {
-      console.error("Error generating or sending daily report:", error);
-    }
-  }
-
-  let dailyReportTask: any = null;
-
-  async function setupCron() {
-    const appConfig = await getAppConfig();
-    const cronTime = appConfig?.reportCronTime || '0 18 * * *';
-
-    if (dailyReportTask) {
-      dailyReportTask.stop();
-    }
-
-    console.log(`Scheduling daily report with cron: ${cronTime}`);
-    try {
-      dailyReportTask = cron.schedule(cronTime, () => {
-        generateAndSendDailyReport();
-      });
-    } catch (error) {
-      console.error(`Failed to schedule cron job with expression "${cronTime}":`, error);
-      if (cronTime !== '0 18 * * *') {
-        console.log('Attempting to schedule with default cron: 0 18 * * *');
-        try {
-          dailyReportTask = cron.schedule('0 18 * * *', () => {
-            generateAndSendDailyReport();
-          });
-        } catch (e) {
-          console.error('Failed to schedule default cron job:', e);
-        }
-      }
-    }
-  }
-
   // Initial setup
-  setupCron().catch(err => console.error("Error in setupCron:", err));
 
   // API routes
   app.get("/api/health", (req, res) => {
@@ -319,14 +178,8 @@ async function startServer() {
 
   // Reload configuration and cron job
   app.post("/api/admin/reload-config", async (req, res) => {
-    await setupCron();
+    
     res.json({ message: "Configuration and cron job reloaded." });
-  });
-
-  // Manual trigger for testing the report
-  app.post("/api/admin/trigger-report", async (req, res) => {
-    await generateAndSendDailyReport();
-    res.json({ message: "Report generation triggered." });
   });
 
   // Handle form submission and send WhatsApp notification
@@ -336,207 +189,44 @@ async function startServer() {
     }
 
     const formData = req.body;
-    console.log("Received form submission for date:", formData.fecha);
-
     try {
       const appConfig = await getAppConfig();
-      
-      const header = `📋 *NUEVO FORMULARIO DIARIO - ${formData.fecha}* 📋\n\n`;
-      
-      const generalInfo = `*Información General:*\n` +
-                          `- Continuidad: ${formData.continuidad}${formData.continuidad === 'No' ? ` (${formData.duracionFalla} min)` : ''}\n` +
-                          `- Falla Voltaje: ${formData.fallaVoltaje}${formData.fallaVoltaje === 'Si' ? ` (${formData.duracionFallaVoltaje} min)` : ''}\n\n`;
-      
-      const generators = `*Generadores (Encendidos):*\n` +
-                         `- Maternidad: ${formData.encendidoMaternidad} (${formData.tiempoMaternidad})\n` +
-                         `- Campamento: ${formData.encendidoCampamento} (${formData.tiempoCampamento})\n` +
-                         `- Subestación: ${formData.encendidoSubestacion} (${formData.tiempoSubestacion})\n\n`;
-      
-      const pumping = `*Bombeo y Tanques:*\n` +
-                      `- Playa: ${formData.bombeoPlaya} min\n` +
-                      `- Pozo: ${formData.bombeoPozo} min\n` +
-                      `- Tanques Aireación: ${formData.tanquesAireacion?.length || 0}\n` +
-                      `- Tanques Movimiento: ${formData.tanquesMovimiento?.length || 0}\n\n`;
+      if (appConfig?.autoSendWhatsAppEnabled === false) {
+        return res.json({ success: true, message: "Saved to Firestore, WhatsApp auto-send is disabled." });
+      }
 
-      const blowers = `*Blowers:*\n` +
-                      `- Encendidos: ${formData.encendidoBlowers} veces\n` +
-                      (formData.tiemposBlowers ? Object.entries(formData.tiemposBlowers)
-                        .filter(([_, val]) => val)
-                        .map(([key, val]) => `  ${key}. ${val}`)
-                        .join('\n') : '') + '\n\n';
+      let message = `*REPORTE OPERATIVO - ${formData.fecha}*\n\n`;
+      message += `👤 *Operador:* ${formData.operador}\n`;
+      message += `⏰ *Turno:* ${formData.turno}\n`;
+      if (formData.notas) message += `📝 *Notas:* ${formData.notas}\n`;
 
-      const failureReport = formData.reporteFalla ? `*Reporte de Falla:*\n${formData.reporteFalla}\n\n` : '';
-      
-      const footer = `_Enviado por: ${formData.submittedBy || 'Sistema'}_`;
-
-      const fullMessage = header + generalInfo + generators + pumping + blowers + failureReport + footer;
-
-      await sendWhatsAppMessage(appConfig, fullMessage);
-
-      res.json({ success: true, message: "Form submitted and notification sent." });
+      const result = await sendWhatsAppMessage(appConfig, message);
+      if (!result.success) {
+        return res.status(500).json({ error: "Failed to send WhatsApp message", details: result.error });
+      }
+      res.json({ success: true, message: "Report generated and sent to WhatsApp." });
     } catch (error) {
-      console.error("Error processing form submission:", error);
-      res.status(500).json({ error: "Failed to process submission" });
+      res.status(500).json({ error: "Internal server error processing submission." });
     }
   });
 
-  // Send any custom WhatsApp / Green API message directly (from Corte de Reporte)
+  // Proxy endpoint to send manual WhatsApp messages
   app.post("/api/send-whatsapp", express.json(), async (req, res) => {
     try {
-      const { message, recipient } = req.body;
+      const { message, recipientId } = req.body;
       if (!message) {
-        return res.status(400).json({ success: false, error: "El contenido del mensaje es requerido." });
+        return res.status(400).json({ error: "Message is required" });
       }
-
       const appConfig = await getAppConfig();
-      const result = await sendWhatsAppMessage(appConfig, message, recipient);
-
-      if (result.success) {
-        return res.json({ success: true, message: "Mensaje enviado exitosamente vía WhatsApp / Green API" });
-      } else {
-        return res.status(400).json({ success: false, error: result.error || "No se pudo enviar el mensaje." });
-      }
-    } catch (error: any) {
-      console.error("Error in /api/send-whatsapp:", error);
-      return res.status(500).json({ success: false, error: error.message || "Error interno del servidor" });
-    }
-  });
-
-  // Fetch WhatsApp chats / groups from Green API
-  app.post("/api/green-api/get-chats", express.json(), async (req, res) => {
-    try {
-      const { greenApiInstanceId, greenApiToken, greenApiUrl } = req.body;
-      const appConfig = await getAppConfig();
-      const instanceId = greenApiInstanceId || appConfig?.greenApiInstanceId || '710722721756';
-      const token = greenApiToken || appConfig?.greenApiToken || '648d092ee3fc4965b6a69e39f5f7d15c2694eb6bc7be48058b';
-      const hostUrl = greenApiUrl || appConfig?.greenApiUrl || `https://api.green-api.com`;
-      const cleanHost = hostUrl.replace(/\/+$/, '');
-
-      if (!instanceId || !token) {
-        return res.status(400).json({ success: false, error: "Credenciales de Green API no provistas." });
-      }
-
-      const url = `${cleanHost}/waInstance${instanceId.trim()}/getChats/${token.trim()}`;
-      const response = await axios.get(url, { timeout: 15000 });
+      const result = await sendWhatsAppMessage(appConfig, message, recipientId);
       
-      const chats = (response.data || []).map((c: any) => ({
-        id: c.id,
-        name: c.name || c.contactName || c.id,
-        isGroup: c.id?.endsWith('@g.us')
-      }));
-
-      return res.json({ success: true, chats });
-    } catch (error: any) {
-      console.error("Error fetching chats from Green API:", error?.response?.data || error.message);
-      return res.status(500).json({ success: false, error: error?.response?.data?.message || error.message });
-    }
-  });
-
-  // Test Green API / WhatsApp connection
-  app.post("/api/test-whatsapp", express.json(), async (req, res) => {
-    try {
-      const { provider, greenApiInstanceId, greenApiToken, greenApiChatId, whatsappApiUrl, whatsappToken, whatsappGroupId } = req.body;
-      const testConfig = {
-        whatsappProvider: provider || 'greenapi',
-        greenApiInstanceId,
-        greenApiToken,
-        greenApiChatId,
-        whatsappApiUrl,
-        whatsappToken,
-        whatsappGroupId
-      };
-
-      const testMsg = `🤖 *PRUEBA DE CONEXIÓN GREEN API / WHATSAPP*\n\n` +
-                      `✅ ¡Tu integración de WhatsApp está funcionando correctamente!\n` +
-                      `📅 Fecha: ${new Date().toLocaleString('es-ES', { timeZone: 'America/Caracas' })}\n` +
-                      `🏢 Sistema: Monitor de Equipos Planta`;
-
-      const result = await sendWhatsAppMessage(testConfig, testMsg);
       if (result.success) {
-        return res.json({ success: true, message: "Mensaje de prueba enviado con éxito." });
+        res.json({ success: true, data: result.data });
       } else {
-        return res.status(400).json({ success: false, error: result.error || "Error al enviar mensaje de prueba" });
+        res.status(500).json({ success: false, error: result.error });
       }
-    } catch (error: any) {
-      return res.status(500).json({ success: false, error: error.message || "Error al probar conexión" });
-    }
-  });
-
-  // Get the latest submission for a specific user or the absolute latest
-  app.get("/api/latest-submission", async (req, res) => {
-    const currentDb = await ensureValidDb();
-    if (!currentDb) {
-      return res.status(500).json({ error: "Firestore not initialized" });
-    }
-
-    const { email } = req.query;
-    if (!email) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    try {
-      const submissionsRef = currentDb.collection('form_submissions');
-      const snapshot = await submissionsRef
-        .where('submittedBy', '==', email)
-        .orderBy('submittedAt', 'desc')
-        .limit(1)
-        .get();
-
-      if (snapshot.empty) {
-        return res.status(404).json({ error: "No submissions found for today." });
-      }
-
-      const data = snapshot.docs[0].data();
-      if (data.submittedAt && data.submittedAt.toDate) {
-        data.submittedAt = data.submittedAt.toDate().toISOString();
-      }
-
-      res.json(data);
-    } catch (error: any) {
-      console.error("Error fetching latest submission:", error);
-      res.status(500).json({ error: "Failed to fetch submission" });
-    }
-  });
-
-  // JSONP endpoint for the bookmarklet to bypass CORS completely
-  app.get("/api/latest-submission-jsonp", async (req, res) => {
-    const currentDb = await ensureValidDb();
-    const callback = req.query.callback as string;
-    
-    if (!callback) {
-      return res.status(400).send("console.error('Callback is required');");
-    }
-
-    if (!currentDb) {
-      return res.send(`${callback}({ error: "Firestore not initialized" });`);
-    }
-
-    const { email } = req.query;
-    if (!email) {
-      return res.send(`${callback}({ error: "Email is required" });`);
-    }
-
-    try {
-      const submissionsRef = currentDb.collection('form_submissions');
-      const snapshot = await submissionsRef
-        .where('submittedBy', '==', email)
-        .orderBy('submittedAt', 'desc')
-        .limit(1)
-        .get();
-
-      if (snapshot.empty) {
-        return res.send(`${callback}({ error: "No se encontró el test de hoy. Asegúrate de haberle dado a 'Completar Formulario' primero." });`);
-      }
-
-      const data = snapshot.docs[0].data();
-      if (data.submittedAt && data.submittedAt.toDate) {
-        data.submittedAt = data.submittedAt.toDate().toISOString();
-      }
-
-      res.send(`${callback}(${JSON.stringify(data)});`);
-    } catch (error: any) {
-      console.error("Error fetching latest submission:", error);
-      res.send(`${callback}({ error: "Failed to fetch submission: ${error.message}" });`);
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

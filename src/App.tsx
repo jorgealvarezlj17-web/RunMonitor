@@ -13,11 +13,12 @@ import { CorteReporte } from './components/CorteReporte';
 import { StatsPanel } from './components/StatsPanel';
 import Settings from './components/Settings';
 import { TeamPanel } from './components/TeamPanel';
-import { Activity, ShieldCheck, Menu, X, BellRing, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
+import { Activity, ShieldCheck, Menu, X, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
+import { AutoReportGenerator } from './components/AutoReportGenerator';
 
 const APP_VERSION = "1.2.0";
 
@@ -27,7 +28,6 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [showReminder, setShowReminder] = useState(false);
   const [shiftStartTime, setShiftStartTime] = useState('18:00');
   const { profile, loading: profileLoading } = useProfile();
 
@@ -93,31 +93,7 @@ export default function App() {
     fetchConfig();
   }, [user]);
 
-  useEffect(() => {
-    const checkReminder = () => {
-      const now = new Date();
-      const todayStr = format(now, 'yyyy-MM-dd');
-      const lastCleared = localStorage.getItem('lastReportClearedDate');
 
-      if (lastCleared !== todayStr) {
-        const [h] = shiftStartTime.split(':').map(Number);
-        if (now.getHours() >= h) {
-          setShowReminder(true);
-        }
-      }
-    };
-
-    checkReminder();
-    const interval = setInterval(checkReminder, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [shiftStartTime]);
-
-  useEffect(() => {
-    if (activeTab === 'corte' && showReminder) {
-      setShowReminder(false);
-      localStorage.setItem('lastReportClearedDate', format(new Date(), 'yyyy-MM-dd'));
-    }
-  }, [activeTab, showReminder]);
 
   useEffect(() => {
     let isMounted = true;
@@ -209,6 +185,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      {user && <AutoReportGenerator />}
       <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
         {!user ? (
           <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto bg-slate-50 relative">
@@ -342,30 +319,6 @@ export default function App() {
 
               {/* Main Content que pasa por debajo de la barra */}
               <main className="flex-1 p-4 sm:p-6 lg:p-10 relative">
-                <AnimatePresence>
-                  {showReminder && activeTab !== 'corte' && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="mb-6 bg-white border border-amber-200 rounded-2xl p-4 flex items-center justify-between shadow-sm"
-                    >
-                      <div className="flex items-center gap-3 text-amber-700">
-                        <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
-                          <BellRing size={16} />
-                        </div>
-                        <span className="font-bold text-sm">Es hora de realizar el corte de reporte.</span>
-                      </div>
-                      <button 
-                        onClick={() => setActiveTab('corte')}
-                        className="px-4 py-2 bg-amber-100 text-amber-700 font-bold rounded-xl hover:bg-amber-200 transition-all text-xs"
-                      >
-                        Ir al Corte
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
                 <AnimatePresence mode="wait">
                   {activeTab === 'dashboard' ? (
                     <motion.div
