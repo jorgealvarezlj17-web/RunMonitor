@@ -21,7 +21,15 @@ import {
   Sparkles,
   CalendarRange,
   Zap,
-  Radio
+  Radio,
+  Database,
+  Copy,
+  Check,
+  FileText,
+  Search,
+  Send,
+  History,
+  Filter
 } from 'lucide-react';
 import { TimePickerModal } from './TimePickerModal';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
@@ -50,7 +58,7 @@ interface Category {
 }
 
 interface AppConfig {
-  whatsappProvider?: 'greenapi' | 'custom';
+  whatsappProvider?: 'render_baileys' | 'greenapi' | 'custom';
   greenApiInstanceId?: string;
   greenApiToken?: string;
   greenApiChatId?: string;
@@ -72,7 +80,17 @@ const to12h = (time24: string) => {
   return `${h}:${m.toString().padStart(2, '0')} ${period}`;
 };
 
-type SettingsTab = 'schedule' | 'whatsapp' | 'categories' | 'system';
+interface WhatsAppBackupRecord {
+  id: string;
+  timestamp: string;
+  recipient: string;
+  message: string;
+  status: 'success' | 'failed';
+  error?: string | null;
+  provider?: string;
+}
+
+type SettingsTab = 'schedule' | 'whatsapp' | 'backups' | 'categories' | 'system';
 
 export const Settings: React.FC = () => {
   const { profile } = useProfile();
@@ -83,14 +101,25 @@ export const Settings: React.FC = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [newCategoryName, setNewCategoryName] = useState('');
 
+  // Backup state
+  const [backups, setBackups] = useState<WhatsAppBackupRecord[]>([]);
+  const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+  const [backupFilter, setBackupFilter] = useState<'all' | 'success' | 'failed'>('all');
+  const [backupSearch, setBackupSearch] = useState('');
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [resendStatus, setResendStatus] = useState<{ id: string; success: boolean; message: string } | null>(null);
+  const [isClearingBackups, setIsClearingBackups] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
   const [config, setConfig] = useState<AppConfig>({
-    whatsappProvider: 'greenapi',
+    whatsappProvider: 'render_baileys',
     greenApiInstanceId: '710722721756',
     greenApiToken: '648d092ee3fc4965b6a69e39f5f7d15c2694eb6bc7be48058b',
     greenApiChatId: '120363427690312638@g.us',
-    whatsappApiUrl: '',
+    whatsappApiUrl: 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message',
     whatsappToken: '',
-    whatsappGroupId: '',
+    whatsappGroupId: '584127653247',
     reportCronTime: '0 18 * * *', // Default 6 PM
     shiftStartTime: '18:00',
     shiftEndTime: '18:00',
@@ -168,7 +197,9 @@ export const Settings: React.FC = () => {
         setConfig(prev => ({
           ...prev,
           ...data,
-          whatsappProvider: data.whatsappProvider || 'greenapi',
+          whatsappProvider: data.whatsappProvider || 'render_baileys',
+          whatsappApiUrl: data.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message',
+          whatsappGroupId: data.whatsappGroupId || '584127653247',
           greenApiInstanceId: data.greenApiInstanceId || '710722721756',
           greenApiToken: data.greenApiToken || '648d092ee3fc4965b6a69e39f5f7d15c2694eb6bc7be48058b',
           greenApiChatId: data.greenApiChatId || '120363427690312638@g.us',
@@ -234,6 +265,113 @@ export const Settings: React.FC = () => {
       setSaveStatus('error');
     } finally {
       setIsSavingConfig(false);
+    }
+  };
+
+  // Backup management logic
+  const fetchBackups = async () => {
+    setIsLoadingBackups(true);
+    try {
+      const res = await fetch('/api/whatsapp-backups');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.backups)) {
+        setBackups(data.backups);
+      }
+    } catch (err) {
+      console.error("Error fetching backups:", err);
+    } finally {
+      setIsLoadingBackups(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'backups') {
+      fetchBackups();
+      if (db) {
+        const q = query(collection(db, 'whatsapp_backups'));
+        const unsub = onSnapshot(q, (snapshot) => {
+          const list: WhatsAppBackupRecord[] = [];
+          snapshot.forEach((docSnap) => {
+            const d = docSnap.data();
+            list.push({
+              id: docSnap.id,
+              timestamp: d.timestamp || new Date().toISOString(),
+              recipient: d.recipient || '',
+              message: d.message || '',
+              status: d.status || 'success',
+              error: d.error || null,
+              provider: d.provider || ''
+            });
+          });
+          list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          setBackups(list);
+          setIsLoadingBackups(false);
+        }, (err) => {
+          console.warn("Firestore listener on whatsapp_backups failed, using REST endpoint fallback:", err);
+        });
+        return () => unsub();
+      }
+    }
+  }, [activeTab]);
+
+  const handleResendBackup = async (backup: WhatsAppBackupRecord) => {
+    sounds.playClick();
+    setResendingId(backup.id);
+    setResendStatus(null);
+    try {
+      const res = await fetch('/api/whatsapp-backups/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: backup.message, recipient: backup.recipient })
+      });
+      const data = await res.json();
+      if (data.success) {
+        sounds.playSuccess();
+        setResendStatus({ id: backup.id, success: true, message: '¡Mensaje reenviado exitosamente a WhatsApp!' });
+      } else {
+        sounds.playError();
+        setResendStatus({ id: backup.id, success: false, message: data.error || 'Error al reenviar mensaje.' });
+      }
+    } catch (err: any) {
+      sounds.playError();
+      setResendStatus({ id: backup.id, success: false, message: err.message || 'Error de conexión' });
+    } finally {
+      setResendingId(null);
+    }
+  };
+
+  const handleCopyBackup = (backup: WhatsAppBackupRecord) => {
+    sounds.playClick();
+    navigator.clipboard.writeText(backup.message);
+    setCopiedId(backup.id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleDeleteSingleBackup = async (id: string) => {
+    sounds.playClick();
+    try {
+      if (db) {
+        await deleteDoc(doc(db, 'whatsapp_backups', id));
+      } else {
+        await fetch(`/api/whatsapp-backups/${id}`, { method: 'DELETE' });
+      }
+      setBackups(prev => prev.filter(b => b.id !== id));
+    } catch (err) {
+      console.error("Error deleting backup:", err);
+    }
+  };
+
+  const handleClearAllBackups = async () => {
+    sounds.playClick();
+    setIsClearingBackups(true);
+    try {
+      await fetch('/api/whatsapp-backups', { method: 'DELETE' });
+      setBackups([]);
+      setShowClearConfirm(false);
+    } catch (err) {
+      console.error("Error clearing backups:", err);
+    } finally {
+      setIsClearingBackups(false);
     }
   };
 
@@ -479,7 +617,7 @@ export const Settings: React.FC = () => {
       )}
 
       {/* Modern Segmented Navigation Tabs */}
-      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 grid grid-cols-2 md:grid-cols-4 gap-1.5 shadow-xs">
+      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 shadow-xs">
         <button
           type="button"
           onClick={() => {
@@ -509,7 +647,23 @@ export const Settings: React.FC = () => {
           }`}
         >
           <MessageSquare size={16} className={activeTab === 'whatsapp' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>WhatsApp & Green API</span>
+          <span>WhatsApp API</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            setActiveTab('backups');
+          }}
+          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+            activeTab === 'backups'
+              ? 'bg-white text-blue-700 shadow-sm border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Database size={16} className={activeTab === 'backups' ? 'text-blue-600' : 'text-slate-400'} />
+          <span>Respaldo de Mensajes</span>
         </button>
 
         <button
@@ -867,7 +1021,22 @@ export const Settings: React.FC = () => {
               </div>
 
               {/* Provider Selector */}
-              <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-2 gap-1.5">
+              <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    setConfig({ ...config, whatsappProvider: 'render_baileys' });
+                  }}
+                  disabled={isReadOnly || !isAdmin}
+                  className={`py-3 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                    (config.whatsappProvider || 'render_baileys') === 'render_baileys'
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>Render Baileys API</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -876,12 +1045,12 @@ export const Settings: React.FC = () => {
                   }}
                   disabled={isReadOnly || !isAdmin}
                   className={`py-3 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
-                    (config.whatsappProvider || 'greenapi') === 'greenapi'
+                    config.whatsappProvider === 'greenapi'
                       ? 'bg-emerald-600 text-white shadow-sm'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span>Green API (Recomendado)</span>
+                  <span>Green API</span>
                 </button>
                 <button
                   type="button"
@@ -896,11 +1065,222 @@ export const Settings: React.FC = () => {
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <span>API Genérica / Whapi</span>
+                  <span>API Genérica / Webhook</span>
                 </button>
               </div>
 
-              {(config.whatsappProvider || 'greenapi') === 'greenapi' ? (
+              {(config.whatsappProvider || 'render_baileys') === 'render_baileys' ? (
+                <div className="space-y-4">
+                  <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-2.5">
+                    <span className="text-emerald-700 font-black">🚀</span>
+                    <div>
+                      <p className="font-bold">Servidor Render Baileys API Vinculado</p>
+                      <p className="mt-0.5 text-emerald-800">
+                        Envío de mensajes directo a tu API en Render mediante <strong>POST JSON</strong> (sin necesidad de token).
+                      </p>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      URL Endpoint del Servidor Render
+                    </label>
+                    <input
+                      type="text"
+                      value={config.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message'}
+                      onChange={(e) => setConfig({ ...config, whatsappApiUrl: e.target.value })}
+                      disabled={isReadOnly || !isAdmin}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
+                      placeholder="https://bot-whatsapp-baileys-jpyb.onrender.com/send-message"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                      Tipo de Destino para Notificaciones
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playClick();
+                          // Switch to individual phone if current is group or default
+                          const currentVal = config.whatsappGroupId || config.greenApiChatId || '';
+                          const newPhone = currentVal.includes('@g.us') ? '584127653247' : (currentVal || '584127653247');
+                          setConfig({ ...config, whatsappGroupId: newPhone, greenApiChatId: newPhone });
+                        }}
+                        disabled={isReadOnly || !isAdmin}
+                        className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                          !(config.whatsappGroupId || config.greenApiChatId || '').includes('@g.us')
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-base">📱</span>
+                        <span>Teléfono Individual</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playClick();
+                          // Switch to group JID
+                          const currentVal = config.whatsappGroupId || config.greenApiChatId || '';
+                          const newGroup = currentVal.includes('@g.us') ? currentVal : '120363427690312638@g.us';
+                          setConfig({ ...config, whatsappGroupId: newGroup, greenApiChatId: newGroup });
+                        }}
+                        disabled={isReadOnly || !isAdmin}
+                        className={`p-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition-all ${
+                          (config.whatsappGroupId || config.greenApiChatId || '').includes('@g.us')
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="text-base">👥</span>
+                        <span>Grupo de WhatsApp</span>
+                      </button>
+                    </div>
+
+                    {(config.whatsappGroupId || config.greenApiChatId || '').includes('@g.us') ? (
+                      <div className="space-y-3">
+                        <label className="block text-xs font-semibold text-slate-600">
+                          ID del Grupo de WhatsApp (JID)
+                        </label>
+                        <input
+                          type="text"
+                          value={config.whatsappGroupId || config.greenApiChatId || ''}
+                          onChange={(e) => setConfig({ ...config, whatsappGroupId: e.target.value, greenApiChatId: e.target.value })}
+                          disabled={isReadOnly || !isAdmin}
+                          className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
+                          placeholder="Ej: 120363427690312638@g.us"
+                        />
+
+                        <div className="p-3 bg-slate-100/80 rounded-xl border border-slate-200/80 flex flex-col gap-2.5">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
+                              <span>💬</span> Grupos detectados en tu WhatsApp:
+                            </p>
+                            <button
+                              type="button"
+                              onClick={handleFetchWhatsAppGroups}
+                              disabled={isLoadingGroups || isReadOnly || !isAdmin}
+                              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-emerald-300 shadow-sm transition-all disabled:opacity-50 active:scale-95"
+                            >
+                              {isLoadingGroups ? <Loader2 size={13} className="animate-spin text-emerald-600" /> : <RefreshCw size={13} />}
+                              <span>{isLoadingGroups ? 'Cargando grupos...' : 'Obtener/Actualizar Grupos'}</span>
+                            </button>
+                          </div>
+
+                          {groupLoadError && (
+                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]">
+                              ⚠️ {groupLoadError}
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sounds.playClick();
+                                setConfig({ ...config, whatsappGroupId: '120363427690312638@g.us', greenApiChatId: '120363427690312638@g.us' });
+                              }}
+                              className={`text-left px-3 py-2.5 rounded-lg border text-xs font-mono transition-all flex items-center justify-between ${
+                                (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
+                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
+                                  : 'bg-white text-emerald-950 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 truncate">
+                                <span>👥</span>
+                                <div className="truncate">
+                                  <p className="font-bold text-xs truncate">Grupo Aquanova</p>
+                                  <p className="text-[10px] font-mono opacity-80">120363427690312638@g.us</p>
+                                </div>
+                              </div>
+                              <span className={`text-[10px] shrink-0 font-sans ml-2 font-bold px-2 py-0.5 rounded ${
+                                (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
+                                  ? 'bg-emerald-700 text-white'
+                                  : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {(config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us') ? '✓ Seleccionado' : 'Seleccionar'}
+                              </span>
+                            </button>
+
+                            {availableGroups.filter(Boolean).map((grp: any) => {
+                              const grpId = grp.id || grp.chatId || grp.groupId || '';
+                              if (grpId === '120363427690312638@g.us') return null; // Already shown above
+                              const isSelected = config.greenApiChatId === grpId || config.whatsappGroupId === grpId;
+                              return (
+                                <button
+                                  key={grpId || grp.name || Math.random().toString()}
+                                  type="button"
+                                  onClick={() => {
+                                    sounds.playClick();
+                                    setConfig({ ...config, greenApiChatId: grpId, whatsappGroupId: grpId });
+                                  }}
+                                  className={`w-full text-left p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
+                                    isSelected
+                                      ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
+                                      : 'bg-white text-slate-800 border-slate-200 hover:bg-emerald-50'
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 truncate">
+                                    <span>👥</span>
+                                    <div className="truncate">
+                                      <p className="font-bold truncate">{grp.name || 'Grupo sin nombre'}</p>
+                                      <p className="text-[10px] font-mono opacity-75">{grpId}</p>
+                                    </div>
+                                  </div>
+                                  <span className={`text-[10px] font-mono shrink-0 ml-2 px-2 py-0.5 rounded ${
+                                    isSelected ? 'bg-emerald-700 text-white font-bold' : 'bg-slate-100 text-slate-700'
+                                  }`}>
+                                    {isSelected ? '✓ Seleccionado' : 'Seleccionar'}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Direct Confirm & Save button */}
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={handleSaveConfig}
+                            disabled={isSavingConfig || isReadOnly || !isAdmin}
+                            className="w-full py-3 px-4 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all shadow-md shadow-emerald-600/20 text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                          >
+                            {isSavingConfig ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
+                            <span>Confirmar y Guardar Grupo Seleccionado</span>
+                          </button>
+                          {saveStatus === 'success' && (
+                            <p className="text-xs text-emerald-600 font-bold text-center mt-1.5 flex items-center justify-center gap-1">
+                              ✓ Grupo guardado y confirmado para el envío de reportes
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-semibold text-slate-600">
+                          Número de Teléfono (con código de país sin +)
+                        </label>
+                        <input
+                          type="text"
+                          value={config.whatsappGroupId || config.greenApiChatId || ''}
+                          onChange={(e) => setConfig({ ...config, whatsappGroupId: e.target.value, greenApiChatId: e.target.value })}
+                          disabled={isReadOnly || !isAdmin}
+                          className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
+                          placeholder="Ej: 584127653247"
+                        />
+                        <p className="text-[11px] text-slate-500">
+                          Formato: Código de país + número sin espacios ni guiones (ej: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">584127653247</code>).
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : config.whatsappProvider === 'greenapi' ? (
                 <div className="space-y-4">
                   <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-2.5">
                     <span className="text-emerald-700 font-black">💡</span>
@@ -972,15 +1352,16 @@ export const Settings: React.FC = () => {
                           Grupos encontrados (Toca para seleccionar):
                         </p>
                         <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
-                          {availableGroups.map((grp) => {
-                            const isSelected = config.greenApiChatId === grp.id;
+                          {availableGroups.filter(Boolean).map((grp: any) => {
+                            const grpId = grp.id || grp.chatId || grp.groupId || '';
+                            const isSelected = config.greenApiChatId === grpId || config.whatsappGroupId === grpId;
                             return (
                               <button
-                                key={grp.id}
+                                key={grpId || grp.name || Math.random().toString()}
                                 type="button"
                                 onClick={() => {
                                   sounds.playClick();
-                                  setConfig({ ...config, greenApiChatId: grp.id });
+                                  setConfig({ ...config, greenApiChatId: grpId, whatsappGroupId: grpId });
                                 }}
                                 className={`w-full text-left p-2.5 rounded-xl border text-xs flex items-center justify-between transition-all ${
                                   isSelected
@@ -990,7 +1371,7 @@ export const Settings: React.FC = () => {
                               >
                                 <div className="flex items-center gap-2 truncate">
                                   <Users size={14} className={isSelected ? 'text-white' : 'text-emerald-600'} />
-                                  <span className="truncate">{grp.name}</span>
+                                  <span className="truncate">{grp.name || grpId}</span>
                                 </div>
                                 <span className={`text-[10px] font-mono shrink-0 ml-2 ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
                                   {isSelected ? '✓ Seleccionado' : 'Elegir'}
@@ -1091,6 +1472,308 @@ export const Settings: React.FC = () => {
                   </button>
                 )}
               </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB: RESPALDO DE MENSAJES Y NOTIFICACIONES                         */}
+        {/* =================================================================== */}
+        {activeTab === 'backups' && (
+          <motion.div
+            key="tab-backups"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-200/60">
+                    <Database size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Respaldo de Notificaciones & Reportes</h2>
+                    <p className="text-xs text-slate-500 font-medium">
+                      Historial completo de todos los mensajes de WhatsApp enviados y fallidos
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={fetchBackups}
+                    disabled={isLoadingBackups}
+                    className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all flex items-center gap-1.5 text-xs font-bold disabled:opacity-50"
+                    title="Actualizar respaldo"
+                  >
+                    <RefreshCw size={15} className={isLoadingBackups ? 'animate-spin text-blue-600' : ''} />
+                    <span>Refrescar</span>
+                  </button>
+
+                  {isAdmin && backups.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(true)}
+                      className="p-2.5 rounded-xl border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-all flex items-center gap-1.5 text-xs font-bold"
+                    >
+                      <Trash2 size={15} />
+                      <span>Vaciar Respaldo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirm Clear Modal inline alert */}
+              {showClearConfirm && (
+                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-3">
+                  <div className="flex items-center gap-2 font-bold text-rose-900">
+                    <AlertTriangle size={18} className="text-rose-600" />
+                    <span>¿Confirmas que deseas eliminar permanentemente TODO el historial de respaldo?</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleClearAllBackups}
+                      disabled={isClearingBackups}
+                      className="px-4 py-2 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all text-xs flex items-center gap-1.5"
+                    >
+                      {isClearingBackups ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      <span>Sí, eliminar todo</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowClearConfirm(false)}
+                      className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-all text-xs"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Summary Stats */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200/60 flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">Total Registros</span>
+                    <span className="text-2xl font-black text-blue-900">{backups.length}</span>
+                  </div>
+                  <Database className="text-blue-500/40" size={28} />
+                </div>
+
+                <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Enviados con Éxito</span>
+                    <span className="text-2xl font-black text-emerald-900">
+                      {backups.filter(b => b.status === 'success').length}
+                    </span>
+                  </div>
+                  <CheckCircle2 className="text-emerald-500/40" size={28} />
+                </div>
+
+                <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/60 flex items-center justify-between">
+                  <div>
+                    <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">Fallidos / Reintentar</span>
+                    <span className="text-2xl font-black text-rose-900">
+                      {backups.filter(b => b.status === 'failed').length}
+                    </span>
+                  </div>
+                  <AlertCircle className="text-rose-500/40" size={28} />
+                </div>
+              </div>
+
+              {/* Filters & Search Bar */}
+              <div className="flex flex-col sm:flex-row items-center gap-3">
+                <div className="relative w-full sm:flex-1">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={backupSearch}
+                    onChange={(e) => setBackupSearch(e.target.value)}
+                    placeholder="Buscar por texto de mensaje o número de destino..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setBackupFilter('all')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      backupFilter === 'all'
+                        ? 'bg-white text-slate-900 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Todos ({backups.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackupFilter('success')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      backupFilter === 'success'
+                        ? 'bg-white text-emerald-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Enviados
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBackupFilter('failed')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                      backupFilter === 'failed'
+                        ? 'bg-white text-rose-700 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Fallidos
+                  </button>
+                </div>
+              </div>
+
+              {/* List of Backups */}
+              {isLoadingBackups ? (
+                <div className="py-12 text-center text-slate-400 space-y-2">
+                  <Loader2 size={24} className="animate-spin mx-auto text-blue-600" />
+                  <p className="text-xs font-medium">Cargando registros de respaldo...</p>
+                </div>
+              ) : backups.length === 0 ? (
+                <div className="py-12 border border-dashed border-slate-200 rounded-2xl text-center space-y-2">
+                  <Database size={32} className="mx-auto text-slate-300" />
+                  <p className="text-sm font-bold text-slate-600">No hay respaldos registrados</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Cada vez que se envíe o intente enviar una notificación de WhatsApp, la copia de seguridad se guardará automáticamente aquí.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {backups
+                    .filter(b => {
+                      const matchesFilter = backupFilter === 'all' || b.status === backupFilter;
+                      const matchesSearch = !backupSearch || 
+                        b.message.toLowerCase().includes(backupSearch.toLowerCase()) || 
+                        b.recipient.toLowerCase().includes(backupSearch.toLowerCase());
+                      return matchesFilter && matchesSearch;
+                    })
+                    .map((bk) => {
+                      const isSuccess = bk.status === 'success';
+                      const formattedDate = bk.timestamp 
+                        ? format(new Date(bk.timestamp), 'dd/MM/yyyy - hh:mm:ss a')
+                        : 'Fecha no registrada';
+
+                      return (
+                        <div
+                          key={bk.id}
+                          className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3 ${
+                            isSuccess 
+                              ? 'bg-slate-50/50 border-slate-200/80 hover:border-slate-300' 
+                              : 'bg-rose-50/30 border-rose-200 hover:border-rose-300'
+                          }`}
+                        >
+                          {/* Card Header */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2">
+                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                                isSuccess 
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
+                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                              }`}>
+                                {isSuccess ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                                {isSuccess ? 'Enviado con Éxito' : 'Fallido / No Enviado'}
+                              </span>
+
+                              <span className="text-slate-500 font-mono text-[11px]">
+                                🕒 {formattedDate}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 text-slate-500 text-[11px] font-medium">
+                              <span>Destino: <strong className="text-slate-800 font-mono">{bk.recipient}</strong></span>
+                              {bk.provider && (
+                                <span className="bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
+                                  {bk.provider}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Error Message if any */}
+                          {bk.error && (
+                            <div className="p-2.5 rounded-xl bg-rose-100/70 border border-rose-200 text-rose-900 text-xs font-medium flex items-center gap-2">
+                              <AlertCircle size={14} className="shrink-0 text-rose-600" />
+                              <span>Detalle del error: <strong>{bk.error}</strong></span>
+                            </div>
+                          )}
+
+                          {/* Message Content Box */}
+                          <div className="bg-slate-900 text-emerald-400 p-3.5 rounded-xl font-mono text-xs overflow-x-auto custom-scrollbar border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
+                            {bk.message}
+                          </div>
+
+                          {/* Resend status notice */}
+                          {resendStatus && resendStatus.id === bk.id && (
+                            <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                              resendStatus.success ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'
+                            }`}>
+                              {resendStatus.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                              <span>{resendStatus.message}</span>
+                            </div>
+                          )}
+
+                          {/* Card Footer Actions */}
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => handleResendBackup(bk)}
+                                disabled={resendingId === bk.id}
+                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                              >
+                                {resendingId === bk.id ? (
+                                  <Loader2 size={13} className="animate-spin" />
+                                ) : (
+                                  <Send size={13} />
+                                )}
+                                <span>Reenviar a WhatsApp</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => handleCopyBackup(bk)}
+                                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-all flex items-center gap-1.5"
+                              >
+                                {copiedId === bk.id ? (
+                                  <Check size={13} className="text-emerald-600" />
+                                ) : (
+                                  <Copy size={13} className="text-slate-500" />
+                                )}
+                                <span>{copiedId === bk.id ? '¡Copiado!' : 'Copiar Texto'}</span>
+                              </button>
+                            </div>
+
+                            {isAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteSingleBackup(bk.id)}
+                                className="px-2.5 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 font-bold text-xs transition-all flex items-center gap-1"
+                                title="Eliminar este respaldo"
+                              >
+                                <Trash2 size={13} />
+                                <span>Eliminar</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
           </motion.div>
         )}

@@ -205,6 +205,21 @@
         "submittedBy": { "type": "string" }
       },
       "required": ["fecha", "submittedAt", "submittedBy"]
+    },
+    "WhatsAppBackup": {
+      "title": "WhatsAppBackup",
+      "description": "Backup record of sent or attempted WhatsApp notifications and reports.",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "recipient": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["success", "failed"] },
+        "error": { "type": "string" },
+        "provider": { "type": "string" },
+        "type": { "type": "string", "enum": ["reporte_cierre", "alerta_equipo", "prueba", "manual"] }
+      },
+      "required": ["timestamp", "message", "status"]
     }
   },
   "firestore": {
@@ -231,6 +246,10 @@
     "/form_submissions/{submissionId}": {
       "schema": "FormSubmission",
       "description": "Completed daily report form submissions."
+    },
+    "/whatsapp_backups/{backupId}": {
+      "schema": "WhatsAppBackup",
+      "description": "Backup log of all WhatsApp messages and notifications."
     }
   }
 }

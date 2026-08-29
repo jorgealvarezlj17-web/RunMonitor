@@ -105,13 +105,13 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
   const [showMenu, setShowMenu] = useState(false);
   const [isEditing, setIsEditing] = useState(initialEdit);
   const [showTimeOverride, setShowTimeOverride] = useState(false);
-  const [editName, setEditName] = useState(equipment.name);
-  const [editDisabledNote, setEditDisabledNote] = useState(equipment.disabledNote || '');
-  const [editCategoryId, setEditCategoryId] = useState(equipment.categoryId || '');
-  const [editCategory, setEditCategory] = useState(equipment.category || 'Generador');
+  const [editName, setEditName] = useState(equipment?.name || '');
+  const [editDisabledNote, setEditDisabledNote] = useState(equipment?.disabledNote || '');
+  const [editCategoryId, setEditCategoryId] = useState(equipment?.categoryId || '');
+  const [editCategory, setEditCategory] = useState(equipment?.category || 'Generador');
   const [categories, setCategories] = useState<{id: string, name: string}[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [editImageUrl, setEditImageUrl] = useState(equipment.imageUrl || '');
+  const [editImageUrl, setEditImageUrl] = useState(equipment?.imageUrl || '');
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [croppingContext, setCroppingContext] = useState<'main' | null>(null);
   const editFileInputRef = useRef<HTMLInputElement>(null);
@@ -124,14 +124,16 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
   const [confirmAction, setConfirmAction] = useState<{ type: 'clear' | 'delete' | 'reset' | 'delete-log', message: string, logId?: string } | null>(null);
   const [showDisableModal, setShowDisableModal] = useState(() => {
     try {
+      if (!equipment?.id) return false;
       const draft = localStorage.getItem(`disableDraft_meta_${equipment.id}`);
       return draft ? JSON.parse(draft).showDisableModal : false;
     } catch { return false; }
   });
-  const [localDisabled, setLocalDisabled] = useState(equipment.disabled || false);
-  const [localShowTotalTime, setLocalShowTotalTime] = useState(equipment.tiempo_operativo !== false);
+  const [localDisabled, setLocalDisabled] = useState(equipment?.disabled || false);
+  const [localShowTotalTime, setLocalShowTotalTime] = useState(equipment?.tiempo_operativo !== false);
   const [disableNote, setDisableNote] = useState(() => {
     try {
+      if (!equipment?.id) return '';
       const draft = localStorage.getItem(`disableDraft_meta_${equipment.id}`);
       return draft ? JSON.parse(draft).disableNote : '';
     } catch { return ''; }

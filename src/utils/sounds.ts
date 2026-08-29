@@ -97,6 +97,10 @@ class SoundEffects {
   playEnable() {
     this.playPowerOn();
   }
+
+  playError() {
+    this.playFalla();
+  }
 }
 
 export const sounds = new SoundEffects();

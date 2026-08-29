@@ -178,6 +178,7 @@ const CategoryHeader = ({ category, onRename, onDelete }: { category: Category, 
 };
 
 const EquipmentCard = ({ item, isDragging, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction, style, listeners, attributes }: any) => {
+  if (!item) return null;
   const [showNote, setShowNote] = useState(false);
   const [showTurnOffOptions, setShowTurnOffOptions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
@@ -512,6 +513,7 @@ const EquipmentCard = ({ item, isDragging, processingId, toggleStatus, setSelect
 };
 
 const DraggableEquipmentCard = ({ item, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction }: any) => {
+  if (!item) return null;
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: item.id,
     data: { type: 'Equipment', item }

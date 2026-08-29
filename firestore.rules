@@ -104,6 +104,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /whatsapp_backups/{backupId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /{path=**} {
       allow read, write: if false;
     }
