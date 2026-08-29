@@ -487,72 +487,66 @@ export const CorteReporte: React.FC = () => {
         equipments.push({ id: doc.id, ...doc.data() });
       });
 
-      // Fetch logs in range
-      const logsRef = collection(db, 'logs');
-      const q = query(
-        logsRef, 
-        where('timestamp', '>=', startTs),
-        where('timestamp', '<=', endTs),
-        orderBy('timestamp', 'asc')
-      );
-      const querySnapshot = await getDocs(q);
-      const logs: LogEntry[] = [];
-      querySnapshot.forEach(doc => {
+      const safeToDate = (ts: any): Date => {
+        if (!ts) return new Date();
+        if (typeof ts.toDate === 'function') return ts.toDate();
+        if (ts instanceof Date) return ts;
+        if (typeof ts === 'number') return new Date(ts);
+        if (typeof ts === 'string') return new Date(ts);
+        if (ts.seconds) return new Date(ts.seconds * 1000);
+        return new Date();
+      };
+
+      // Fetch all logs once (avoids composite index errors)
+      const allLogsSnap = await getDocs(collection(db, 'logs'));
+      const allLogs: LogEntry[] = [];
+      allLogsSnap.forEach(doc => {
         const logData = doc.data() as LogEntry;
-        logs.push({ id: doc.id, ...logData });
+        allLogs.push({ id: doc.id, ...logData });
       });
 
-      // Fetch power_events in range
-      const powerEventsRef = collection(db, 'power_events');
-      const qPower = query(
-        powerEventsRef,
-        where('timestamp', '>=', startTs),
-        where('timestamp', '<=', endTs),
-        orderBy('timestamp', 'asc')
-      );
-      const powerSnapshot = await getDocs(qPower);
-      const powerEvents: any[] = [];
-      powerSnapshot.forEach(doc => {
-        const data = doc.data();
-        powerEvents.push({ id: doc.id, ...data });
+      // Filter logs in range
+      const logs = allLogs.filter(l => {
+        const d = safeToDate(l.timestamp);
+        return d >= start && d <= end;
+      });
+      logs.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
+
+      // Fetch all power_events once
+      const allPowerSnap = await getDocs(collection(db, 'power_events'));
+      const allPower: any[] = [];
+      allPowerSnap.forEach(doc => {
+        allPower.push({ id: doc.id, ...doc.data() });
       });
 
-      // Fetch last power event before shift to know initial state
-      const qLastPower = query(
-        powerEventsRef,
-        where('timestamp', '<', startTs),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      );
-      const lastPowerSnap = await getDocs(qLastPower);
-      let initialPowerState: any = null;
-      if (!lastPowerSnap.empty) {
-        initialPowerState = lastPowerSnap.docs[0].data();
-      }
+      const powerEvents = allPower.filter(p => {
+        const d = safeToDate(p.timestamp);
+        return d >= start && d <= end;
+      });
+      powerEvents.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
 
-      // Fetch arrival status for each equipment
+      const priorPower = allPower.filter(p => safeToDate(p.timestamp) < start);
+      priorPower.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+      let initialPowerState: any = priorPower.length > 0 ? priorPower[0] : null;
+
+      // Determine arrival status for each equipment
       const arrivalStatuses: Record<string, string> = {};
-      await Promise.all(equipments.map(async (eq) => {
-        const qLast = query(
-          collection(db, 'logs'),
-          where('equipmentId', '==', eq.id),
-          where('timestamp', '<', startTs),
-          orderBy('timestamp', 'desc'),
-          limit(50)
-        );
-        const snap = await getDocs(qLast);
-        let foundStatus = 'off';
-        for (const doc of snap.docs) {
-          const logData = doc.data() as LogEntry;
-          
-          const action = logData.action;
+      equipments.forEach((eq) => {
+        const priorLogs = allLogs.filter(l => l.equipmentId === eq.id && safeToDate(l.timestamp) < start);
+        priorLogs.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+        let foundStatus: string | null = null;
+        for (const doc of priorLogs) {
+          const action = doc.action;
           if (action === 'on' || action === 'off') {
             foundStatus = action;
             break;
           }
         }
+        if (!foundStatus) {
+          foundStatus = eq.status === 'on' ? 'on' : 'off';
+        }
         arrivalStatuses[eq.id] = foundStatus;
-      }));
+      });
 
       // Group equipments by category
       const groupedEquipments: Record<string, any[]> = {};
@@ -710,13 +704,12 @@ export const CorteReporte: React.FC = () => {
             // Group logs by date
             const logsByDate: Record<string, LogEntry[]> = {};
             eqLogs.forEach(log => {
-              const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
+              const logDate = safeToDate(log.timestamp);
               const dateStr = format(logDate, 'yyyy-MM-dd');
               if (!logsByDate[dateStr]) logsByDate[dateStr] = [];
               logsByDate[dateStr].push(log);
             });
 
-            // If no logs but was 'on' at start, ensure we show the start date
             const startDateStr = format(start, 'yyyy-MM-dd');
             if (eqLogs.length === 0 && arrivalStatus === 'on' && eq.tiempo_operativo !== false) {
               logsByDate[startDateStr] = [];
@@ -725,39 +718,42 @@ export const CorteReporte: React.FC = () => {
             const sortedDates = Object.keys(logsByDate).sort();
             
             sortedDates.forEach(dateKey => {
-              const dateParts = dateKey.split('-').map(Number);
-              const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
-              const dayName = format(dateObj, "EEEE d", { locale: es });
-              const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
-              
-              // Centered-ish header for the day
-              catText += `          ${capitalizedDay}\n`;
-              
               const dayLogs = logsByDate[dateKey];
-              
-              if (dayLogs.length === 0 && arrivalStatus === 'on') {
-                catText += `• (En servicio desde el inicio)\n`;
-              }
+              if (dayLogs.length > 0 || arrivalStatus === 'on') {
+                const dateParts = dateKey.split('-').map(Number);
+                const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
+                const dayName = format(dateObj, "EEEE d", { locale: es });
+                const capitalizedDay = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+                
+                // Centered-ish header for the day
+                catText += `          ${capitalizedDay}\n`;
+                
+                if (dayLogs.length === 0) {
+                  if (arrivalStatus === 'on') {
+                    catText += `• (En servicio desde el inicio / Sigue ON)\n`;
+                  }
+                }
 
-              let i = 0;
-              while (i < dayLogs.length) {
-                const log = dayLogs[i];
-                const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
-                if (log.action === 'on') {
-                  const timeOn = format(logDate, 'h:mma');
-                  if (i + 1 < dayLogs.length && dayLogs[i+1].action === 'off') {
-                    const nextLogDate = dayLogs[i+1].timestamp ? dayLogs[i+1].timestamp.toDate() : new Date();
-                    const timeOff = format(nextLogDate, 'h:mma');
-                    catText += `• ON ${timeOn}  |  OFF ${timeOff}\n`;
-                    i += 2;
+                let i = 0;
+                while (i < dayLogs.length) {
+                  const log = dayLogs[i];
+                  const logDate = safeToDate(log.timestamp);
+                  if (log.action === 'on') {
+                    const timeOn = format(logDate, 'h:mma');
+                    if (i + 1 < dayLogs.length && dayLogs[i+1].action === 'off') {
+                      const nextLogDate = safeToDate(dayLogs[i+1].timestamp);
+                      const timeOff = format(nextLogDate, 'h:mma');
+                      catText += `• ON ${timeOn}  |  OFF ${timeOff}\n`;
+                      i += 2;
+                    } else {
+                      catText += `• ON ${timeOn} (Sigue ON)\n`;
+                      i++;
+                    }
                   } else {
-                    catText += `• ON ${timeOn} (Sigue ON)\n`;
+                    const timeOff = format(logDate, 'h:mma');
+                    catText += `• OFF ${timeOff}\n`;
                     i++;
                   }
-                } else {
-                  const timeOff = format(logDate, 'h:mma');
-                  catText += `• OFF ${timeOff}\n`;
-                  i++;
                 }
               }
             });
@@ -769,7 +765,7 @@ export const CorteReporte: React.FC = () => {
               let lastOnTime = isOn ? start.getTime() : 0;
 
               eqLogs.forEach(log => {
-                const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
+                const logDate = safeToDate(log.timestamp);
                 const logTime = logDate.getTime();
                 if (log.action === 'on') {
                   if (!isOn) {
@@ -778,7 +774,7 @@ export const CorteReporte: React.FC = () => {
                   }
                 } else if (log.action === 'off') {
                   if (isOn) {
-                    totalMs += (logTime - lastOnTime);
+                    totalMs += Math.max(0, logTime - lastOnTime);
                     isOn = false;
                   }
                 }
@@ -786,8 +782,10 @@ export const CorteReporte: React.FC = () => {
 
               if (isOn) {
                 const now = new Date();
-                const reportEndTime = end < now ? end : now;
-                totalMs += (reportEndTime.getTime() - lastOnTime);
+                const evalMs = Math.min(now.getTime(), end.getTime());
+                if (evalMs > lastOnTime) {
+                  totalMs += (evalMs - lastOnTime);
+                }
               }
 
               const totalMinutes = Math.round(totalMs / 60000);
@@ -829,32 +827,22 @@ export const CorteReporte: React.FC = () => {
       setCopied(true);
       setTimeout(() => setCopied(false), 3000);
 
-      // Save current observations to Firestore to persist manual edits - don't await
-      setDoc(doc(db, 'config', 'current_shift_observations'), {
-        observations: observations,
-        lastUpdated: serverTimestamp()
-      }, { merge: true }).catch(e => {
-        console.error("Error saving observations:", e);
-      });
-
-      // Save tanks to previous shift
-      await setDoc(doc(db, 'config', 'previous_shift_tanks'), {
-        tanquesAireacion,
-        tanquesMovimiento,
-        lastUpdated: serverTimestamp()
-      }, { merge: true });
-
-      // Clear current shift data for the next shift
+      // Save current shift data to Firestore to persist manual edits
       await Promise.all([
-        setDoc(doc(db, 'config', 'current_shift_observations'), { observations: '', lastUpdated: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, 'config', 'current_shift_maintenance'), { records: '', lastUpdated: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, 'config', 'current_shift_tanks'), { tanquesAireacion: [], tanquesMovimiento: [], lastUpdated: serverTimestamp() }, { merge: true })
+        setDoc(doc(db, 'config', 'current_shift_observations'), {
+          observations: observations,
+          lastUpdated: serverTimestamp()
+        }, { merge: true }),
+        setDoc(doc(db, 'config', 'current_shift_maintenance'), {
+          records: maintenanceRecords,
+          lastUpdated: serverTimestamp()
+        }, { merge: true }),
+        setDoc(doc(db, 'config', 'current_shift_tanks'), {
+          tanquesAireacion,
+          tanquesMovimiento,
+          lastUpdated: serverTimestamp()
+        }, { merge: true })
       ]);
-
-      setObservations('');
-      setMaintenanceRecords('');
-      setTanquesAireacion([]);
-      setTanquesMovimiento([]);
 
       sounds.playSuccess();
 

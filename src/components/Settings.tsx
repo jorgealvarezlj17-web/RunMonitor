@@ -85,7 +85,7 @@ interface WhatsAppBackupRecord {
   timestamp: string;
   recipient: string;
   message: string;
-  status: 'success' | 'failed';
+  status: 'success' | 'failed' | 'scheduled';
   error?: string | null;
   provider?: string;
 }
@@ -269,13 +269,27 @@ export const Settings: React.FC = () => {
   };
 
   // Backup management logic
+  const [stagedBackup, setStagedBackup] = useState<WhatsAppBackupRecord | null>(null);
+
   const fetchBackups = async () => {
     setIsLoadingBackups(true);
     try {
       const res = await fetch('/api/whatsapp-backups');
       const data = await res.json();
       if (data.success && Array.isArray(data.backups)) {
-        setBackups(data.backups);
+        setBackups(data.backups.filter((b: any) => b.id !== 'staged_upcoming_report'));
+        const staged = data.backups.find((b: any) => b.id === 'staged_upcoming_report');
+        if (staged) {
+          setStagedBackup({
+            id: staged.id,
+            timestamp: staged.timestamp || new Date().toISOString(),
+            recipient: staged.recipient || 'Grupo WhatsApp (Programado)',
+            message: staged.message || '',
+            status: 'scheduled',
+            error: null,
+            provider: ''
+          });
+        }
       }
     } catch (err) {
       console.error("Error fetching backups:", err);
@@ -291,7 +305,21 @@ export const Settings: React.FC = () => {
         const q = query(collection(db, 'whatsapp_backups'));
         const unsub = onSnapshot(q, (snapshot) => {
           const list: WhatsAppBackupRecord[] = [];
+          let foundStaged: WhatsAppBackupRecord | null = null;
           snapshot.forEach((docSnap) => {
+            if (docSnap.id === 'staged_upcoming_report') {
+              const d = docSnap.data();
+              foundStaged = {
+                id: docSnap.id,
+                timestamp: d.timestamp || new Date().toISOString(),
+                recipient: d.recipient || 'Grupo WhatsApp (Programado)',
+                message: d.message || '',
+                status: 'scheduled',
+                error: null,
+                provider: ''
+              };
+              return;
+            }
             const d = docSnap.data();
             list.push({
               id: docSnap.id,
@@ -305,6 +333,7 @@ export const Settings: React.FC = () => {
           });
           list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
           setBackups(list);
+          setStagedBackup(foundStaged);
           setIsLoadingBackups(false);
         }, (err) => {
           console.warn("Firestore listener on whatsapp_backups failed, using REST endpoint fallback:", err);
@@ -313,6 +342,44 @@ export const Settings: React.FC = () => {
       }
     }
   }, [activeTab]);
+
+  const handleSendStagedNow = async () => {
+    if (!stagedBackup) return;
+    sounds.playClick();
+    setResendingId('staged_upcoming_report');
+    setResendStatus(null);
+    try {
+      const res = await fetch('/api/send-whatsapp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: stagedBackup.message })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        sounds.playSuccess();
+        setResendStatus({ id: 'staged_upcoming_report', success: true, message: '¡Reporte pre-generado enviado exitosamente a WhatsApp!' });
+        if (db) {
+          const backupId = `bk_${Date.now()}`;
+          await setDoc(doc(db, 'whatsapp_backups', backupId), {
+            id: backupId,
+            timestamp: new Date().toISOString(),
+            recipient: 'Grupo WhatsApp (Manual)',
+            message: stagedBackup.message,
+            status: 'success',
+            type: 'manual'
+          });
+        }
+      } else {
+        sounds.playError();
+        setResendStatus({ id: 'staged_upcoming_report', success: false, message: data.error || 'Error al enviar a WhatsApp' });
+      }
+    } catch (err: any) {
+      sounds.playError();
+      setResendStatus({ id: 'staged_upcoming_report', success: false, message: err.message || 'Error de conexión' });
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   const handleResendBackup = async (backup: WhatsAppBackupRecord) => {
     sounds.playClick();
@@ -1556,85 +1623,76 @@ export const Settings: React.FC = () => {
                 </div>
               )}
 
-              {/* Summary Stats */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="p-4 rounded-2xl bg-blue-50/60 border border-blue-200/60 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider block">Total Registros</span>
-                    <span className="text-2xl font-black text-blue-900">{backups.length}</span>
-                  </div>
-                  <Database className="text-blue-500/40" size={28} />
-                </div>
+              {/* Live Pre-generated Staged Report Card */}
+              {stagedBackup && (
+                <div className="p-5 bg-gradient-to-br from-amber-50 via-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-200/80 shadow-xs space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-white flex items-center gap-1.5 shadow-xs animate-pulse">
+                        ⚡ REPORTE PRE-GENERADO EN VIVO
+                      </span>
+                      <span className="text-xs text-amber-900 font-bold">
+                        Programado para salir automáticamente a las {config.shiftEndTime || '18:00'}
+                      </span>
+                    </div>
 
-                <div className="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/60 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Enviados con Éxito</span>
-                    <span className="text-2xl font-black text-emerald-900">
-                      {backups.filter(b => b.status === 'success').length}
+                    <span className="text-[11px] text-amber-800/80 font-mono font-bold">
+                      Última actualización: {format(new Date(stagedBackup.timestamp), 'hh:mm:ss a')}
                     </span>
                   </div>
-                  <CheckCircle2 className="text-emerald-500/40" size={28} />
-                </div>
 
-                <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/60 flex items-center justify-between">
-                  <div>
-                    <span className="text-[11px] font-bold text-rose-700 uppercase tracking-wider block">Fallidos / Reintentar</span>
-                    <span className="text-2xl font-black text-rose-900">
-                      {backups.filter(b => b.status === 'failed').length}
-                    </span>
+                  <div className="bg-slate-950 text-amber-300 p-4 rounded-xl font-mono text-xs overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto shadow-inner">
+                    {stagedBackup.message}
                   </div>
-                  <AlertCircle className="text-rose-500/40" size={28} />
-                </div>
-              </div>
 
-              {/* Filters & Search Bar */}
-              <div className="flex flex-col sm:flex-row items-center gap-3">
-                <div className="relative w-full sm:flex-1">
-                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    value={backupSearch}
-                    onChange={(e) => setBackupSearch(e.target.value)}
-                    placeholder="Buscar por texto de mensaje o número de destino..."
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-                  />
-                </div>
+                  {resendStatus && resendStatus.id === 'staged_upcoming_report' && (
+                    <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      resendStatus.success ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'
+                    }`}>
+                      {resendStatus.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+                      <span>{resendStatus.message}</span>
+                    </div>
+                  )}
 
-                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setBackupFilter('all')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      backupFilter === 'all'
-                        ? 'bg-white text-slate-900 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Todos ({backups.length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBackupFilter('success')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      backupFilter === 'success'
-                        ? 'bg-white text-emerald-700 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Enviados
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setBackupFilter('failed')}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                      backupFilter === 'failed'
-                        ? 'bg-white text-rose-700 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Fallidos
-                  </button>
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-200/60">
+                    <p className="text-[11px] text-amber-800/90 font-medium italic">
+                      ℹ️ Este texto se guarda en respaldo y se actualiza automáticamente con cada cambio en la bitácora antes de la hora de salida.
+                    </p>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSendStagedNow}
+                        disabled={resendingId === 'staged_upcoming_report'}
+                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95 disabled:opacity-50"
+                      >
+                        {resendingId === 'staged_upcoming_report' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                        <span>Enviar Ahora a WhatsApp</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleCopyBackup(stagedBackup)}
+                        className="px-3 py-2 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5"
+                      >
+                        {copiedId === stagedBackup.id ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                        <span>{copiedId === stagedBackup.id ? '¡Copiado!' : 'Copiar Texto'}</span>
+                      </button>
+                    </div>
+                  </div>
                 </div>
+              )}
+
+              {/* Search Bar */}
+              <div className="relative w-full">
+                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={backupSearch}
+                  onChange={(e) => setBackupSearch(e.target.value)}
+                  placeholder="Buscar en el historial de respaldos..."
+                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                />
               </div>
 
               {/* List of Backups */}
@@ -1648,18 +1706,17 @@ export const Settings: React.FC = () => {
                   <Database size={32} className="mx-auto text-slate-300" />
                   <p className="text-sm font-bold text-slate-600">No hay respaldos registrados</p>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Cada vez que se envíe o intente enviar una notificación de WhatsApp, la copia de seguridad se guardará automáticamente aquí.
+                    Cada vez que se envíe una notificación de WhatsApp, la copia de seguridad se guardará automáticamente aquí.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-4">
                   {backups
                     .filter(b => {
-                      const matchesFilter = backupFilter === 'all' || b.status === backupFilter;
                       const matchesSearch = !backupSearch || 
                         b.message.toLowerCase().includes(backupSearch.toLowerCase()) || 
                         b.recipient.toLowerCase().includes(backupSearch.toLowerCase());
-                      return matchesFilter && matchesSearch;
+                      return matchesSearch;
                     })
                     .map((bk) => {
                       const isSuccess = bk.status === 'success';

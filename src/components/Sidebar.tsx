@@ -6,7 +6,8 @@ import {
   LogOut, 
   ChevronRight,
   Users,
-  BarChart3
+  BarChart3,
+  Activity
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useProfile } from '../context/ProfileContext';
@@ -26,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpe
 
   const menuItems = [
     { id: 'dashboard', label: 'Panel de Control', icon: LayoutDashboard },
+    { id: 'registro', label: 'Panel de Registro', icon: Activity },
     { id: 'corte', label: 'Corte de Reporte', icon: ClipboardCheck },
     ...(isAdmin ? [
       { id: 'stats', label: 'Estadísticas', icon: BarChart3 },

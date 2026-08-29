@@ -214,10 +214,10 @@
         "timestamp": { "type": "string", "format": "date-time" },
         "recipient": { "type": "string" },
         "message": { "type": "string" },
-        "status": { "type": "string", "enum": ["success", "failed"] },
+        "status": { "type": "string", "enum": ["success", "failed", "scheduled"] },
         "error": { "type": "string" },
         "provider": { "type": "string" },
-        "type": { "type": "string", "enum": ["reporte_cierre", "alerta_equipo", "prueba", "manual"] }
+        "type": { "type": "string", "enum": ["reporte_cierre", "alerta_equipo", "prueba", "manual", "reporte_programado"] }
       },
       "required": ["timestamp", "message", "status"]
     }

@@ -10,6 +10,7 @@ import { PowerEventsLog } from './components/PowerEventsLog';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sidebar } from './components/Sidebar';
 import { CorteReporte } from './components/CorteReporte';
+import { PanelRegistro } from './components/PanelRegistro';
 import { StatsPanel } from './components/StatsPanel';
 import Settings from './components/Settings';
 import { TeamPanel } from './components/TeamPanel';
@@ -348,6 +349,16 @@ export default function App() {
                           <EquipmentList />
                         </div>
                       </div>
+                    </motion.div>
+                  ) : activeTab === 'registro' ? (
+                    <motion.div
+                      key="registro"
+                      initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -20, scale: 0.98 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    >
+                      <PanelRegistro />
                     </motion.div>
                   ) : activeTab === 'corte' ? (
                     <motion.div

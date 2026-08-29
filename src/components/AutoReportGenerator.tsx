@@ -10,6 +10,7 @@ import {
   onSnapshot, 
   setDoc, 
   getDoc,
+  deleteDoc,
   serverTimestamp, 
   Timestamp, 
   addDoc 
@@ -26,6 +27,7 @@ export function AutoReportGenerator() {
   const [lastAutoSentShiftKey, setLastAutoSentShiftKey] = useState<string | null>(null);
 
   const isExecutingRef = useRef(false);
+  const isStagingRef = useRef(false);
   const configLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -43,348 +45,274 @@ export function AutoReportGenerator() {
     return () => unsubscribeConfig();
   }, []);
 
-  const checkAndTriggerAutoReport = async () => {
-    if (!configLoadedRef.current || isExecutingRef.current) return;
-    if (rangeMode === 'until_now' || !endTime || !autoSendEnabled) return;
-
-    // Calculate shift end time for TODAY
-    const [endH, endM] = endTime.split(':').map(Number);
-    if (isNaN(endH) || isNaN(endM)) return;
-
-    const now = new Date();
-    const endToday = new Date(now);
-    endToday.setHours(endH, endM, 0, 0);
-
-    // Only trigger if today's scheduled shift end time has been reached/passed.
-    // Do NOT trigger for past days or when saving schedule before the scheduled time.
-    if (now < endToday) {
-      return;
+  // Helper to safely parse any Firestore timestamp or Date
+  const safeToDate = (ts: any): Date => {
+    if (!ts) return new Date();
+    if (ts instanceof Date) return ts;
+    if (typeof ts.toDate === 'function') return ts.toDate();
+    if (typeof ts.seconds === 'number') return new Date(ts.seconds * 1000);
+    if (typeof ts._seconds === 'number') return new Date(ts._seconds * 1000);
+    if (typeof ts === 'number') return new Date(ts);
+    if (typeof ts === 'string') {
+      const d = new Date(ts);
+      if (!isNaN(d.getTime())) return d;
     }
-
-    const targetShiftEnd = endToday;
-    const dateStr = format(targetShiftEnd, 'yyyy-MM-dd');
-    const shiftKey = `${endTime}_${dateStr}`;
-
-    // If shift key matches what's already sent in local state, skip
-    if (lastAutoSentShiftKey === shiftKey) return;
-
-    // Lock check against Firestore to prevent duplicate concurrent executions
-    try {
-      isExecutingRef.current = true;
-      const settingsRef = doc(db, 'config', 'app_settings');
-      const docSnap = await getDoc(settingsRef);
-      if (docSnap.exists() && docSnap.data().lastAutoSentShiftKey === shiftKey) {
-        setLastAutoSentShiftKey(shiftKey);
-        isExecutingRef.current = false;
-        return;
-      }
-
-      // Lock this shiftKey immediately in Firestore before generating
-      await setDoc(settingsRef, { lastAutoSentShiftKey: shiftKey }, { merge: true });
-      setLastAutoSentShiftKey(shiftKey);
-
-      console.log(`[AutoReportGenerator] Triggering auto report for shiftKey: ${shiftKey}...`);
-      await generateAndSendReport(targetShiftEnd);
-    } catch (err) {
-      console.error("[AutoReportGenerator] Error checking/locking auto report:", err);
-    } finally {
-      isExecutingRef.current = false;
-    }
+    return new Date();
   };
 
-  useEffect(() => {
-    // Check on interval (every 5s)
-    const interval = setInterval(() => {
-      checkAndTriggerAutoReport();
-    }, 5000);
+  // Helper to build current report text
+  const buildCurrentReportText = async (targetShiftEnd: Date): Promise<string> => {
+    const now = new Date();
+    let start: Date;
+    let end: Date = targetShiftEnd;
 
-    // Check immediately on tab visibility change or window focus
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        checkAndTriggerAutoReport();
-      }
-    };
+    const [startH, startM] = startTime.split(':').map(Number);
+    const [endH, endM] = endTime.split(':').map(Number);
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleVisibilityChange);
+    start = new Date(end);
+    if (startH === endH && startM === endM) {
+      start.setDate(end.getDate() - 1);
+      start.setHours(startH, startM, 0, 0);
+    } else if (startH > endH || (startH === endH && startM > endM)) {
+      start.setDate(end.getDate() - 1);
+      start.setHours(startH, startM, 0, 0);
+    } else {
+      start.setHours(startH, startM, 0, 0);
+    }
 
-    // Initial check
-    checkAndTriggerAutoReport();
+    // Fetch categories
+    const catSnap = await getDocs(collection(db, 'categories'));
+    const categories: Record<string, string> = {};
+    catSnap.forEach(docSnap => {
+      categories[docSnap.id] = docSnap.data().name;
+    });
 
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleVisibilityChange);
-    };
-  }, [endTime, startTime, rangeMode, autoSendEnabled, lastAutoSentShiftKey]);
+    // Fetch equipment
+    const equipSnap = await getDocs(collection(db, 'equipment'));
+    const equipments: any[] = [];
+    equipSnap.forEach(docSnap => {
+      equipments.push({ id: docSnap.id, ...docSnap.data() });
+    });
 
-  const generateAndSendReport = async (targetShiftEnd: Date) => {
-    console.log("Generating report content for auto-send...");
-    try {
-      const now = new Date();
-      let start: Date;
-      let end: Date = targetShiftEnd;
+    // Fetch all logs once (avoids composite index errors)
+    const allLogsSnap = await getDocs(collection(db, 'logs'));
+    const allLogs: any[] = [];
+    allLogsSnap.forEach(docSnap => {
+      allLogs.push({ id: docSnap.id, ...docSnap.data() });
+    });
 
-      const [startH, startM] = startTime.split(':').map(Number);
-      const [endH, endM] = endTime.split(':').map(Number);
+    // Filter logs in shift range
+    const logs = allLogs.filter(l => {
+      const d = safeToDate(l.timestamp);
+      return d >= start && d <= end;
+    });
+    logs.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
 
-      start = new Date(end);
-      if (startH === endH && startM === endM) {
-        start.setDate(end.getDate() - 1);
-        start.setHours(startH, startM, 0, 0);
-      } else if (startH > endH || (startH === endH && startM > endM)) {
-        start.setDate(end.getDate() - 1);
-        start.setHours(startH, startM, 0, 0);
-      } else {
-        start.setHours(startH, startM, 0, 0);
-      }
+    // Fetch all power events once
+    const allPowerSnap = await getDocs(collection(db, 'power_events'));
+    const allPower: any[] = [];
+    allPowerSnap.forEach(docSnap => {
+      allPower.push({ id: docSnap.id, ...docSnap.data() });
+    });
 
-      const startTs = Timestamp.fromDate(start);
-      const endTs = Timestamp.fromDate(end);
+    const powerEvents = allPower.filter(p => {
+      const d = safeToDate(p.timestamp);
+      return d >= start && d <= end;
+    });
+    powerEvents.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
 
-      // Fetch categories
-      const catSnap = await getDocs(collection(db, 'categories'));
-      const categories: Record<string, string> = {};
-      catSnap.forEach(doc => {
-        categories[doc.id] = doc.data().name;
-      });
+    const priorPower = allPower.filter(p => safeToDate(p.timestamp) < start);
+    priorPower.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+    let initialPowerState: any = priorPower.length > 0 ? priorPower[0] : null;
 
-      // Fetch equipment
-      const equipSnap = await getDocs(collection(db, 'equipment'));
-      const equipments: any[] = [];
-      equipSnap.forEach(doc => {
-        equipments.push({ id: doc.id, ...doc.data() });
-      });
-
-      // Fetch logs
-      const q = query(
-        collection(db, 'logs'), 
-        where('timestamp', '>=', startTs),
-        where('timestamp', '<=', endTs),
-        orderBy('timestamp', 'asc')
-      );
-      const querySnapshot = await getDocs(q);
-      const logs: any[] = [];
-      querySnapshot.forEach(doc => {
-        logs.push({ id: doc.id, ...doc.data() });
-      });
-
-      // Fetch power events
-      const qPower = query(
-        collection(db, 'power_events'),
-        where('timestamp', '>=', startTs),
-        where('timestamp', '<=', endTs),
-        orderBy('timestamp', 'asc')
-      );
-      const powerSnapshot = await getDocs(qPower);
-      const powerEvents: any[] = [];
-      powerSnapshot.forEach(doc => {
-        powerEvents.push({ id: doc.id, ...doc.data() });
-      });
-
-      // Fetch last power event
-      const qLastPower = query(
-        collection(db, 'power_events'),
-        where('timestamp', '<', startTs),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      );
-      const lastPowerSnap = await getDocs(qLastPower);
-      let initialPowerState: any = null;
-      if (!lastPowerSnap.empty) {
-        initialPowerState = lastPowerSnap.docs[0].data();
-      }
-
-      // Fetch arrival status for each equipment
-      const arrivalStatuses: Record<string, string> = {};
-      await Promise.all(equipments.map(async (eq) => {
-        const qLast = query(
-          collection(db, 'logs'),
-          where('equipmentId', '==', eq.id),
-          where('timestamp', '<', startTs),
-          orderBy('timestamp', 'desc'),
-          limit(50)
-        );
-        const snap = await getDocs(qLast);
-        let foundStatus = 'off';
-        for (const d of snap.docs) {
-          const action = d.data().action;
-          if (action === 'on' || action === 'off') {
-            foundStatus = action;
-            break;
-          }
-        }
-        arrivalStatuses[eq.id] = foundStatus;
-      }));
-
-      // Group equipments
-      const groupedEquipments: Record<string, any[]> = {};
-      equipments.forEach(eq => {
-        const catId = eq.categoryId || 'uncategorized';
-        if (!groupedEquipments[catId]) groupedEquipments[catId] = [];
-        groupedEquipments[catId].push(eq);
-      });
-
-      // Format report
-      const startStr = `${format(start, "dd/MM/yy")} (${format(start, "h:mma")})`;
-      const endStr = `${format(end, "dd/MM/yy")} (${format(end, "h:mma")})`;
-
-      const currentOp = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Operador Automático';
-
-      let text = `👤 OP. EN TURNO: ${currentOp}\n`;
-      text += `📅 Ciclo Operativo: ${startStr} — ${endStr}\n`;
-      text += `━━━━━━━━━━━━━━━━━━━━\n`;
-
-      // Power events
-      let powerEventsText = '';
-      if (powerEvents.length > 0 || (initialPowerState && initialPowerState.type !== 'ok')) {
-        const fallas: any[] = [];
-        const cortes: any[] = [];
-        let currentEvent: any = null;
-
-        if (initialPowerState && initialPowerState.type !== 'ok') {
-          currentEvent = {
-            start: initialPowerState.timestamp ? initialPowerState.timestamp.toDate() : new Date(),
-            end: null,
-            type: initialPowerState.type
-          };
-        }
-
-        powerEvents.forEach((ev) => {
-          const evDate = ev.timestamp ? ev.timestamp.toDate() : new Date();
-          if (ev.type === 'falla' || ev.type === 'corte') {
-            if (!currentEvent) {
-              currentEvent = { start: evDate, end: null, type: ev.type };
-            } else if (currentEvent.type !== ev.type) {
-              currentEvent.end = evDate;
-              if (currentEvent.type === 'falla') fallas.push(currentEvent);
-              else cortes.push(currentEvent);
-              currentEvent = { start: evDate, end: null, type: ev.type };
-            }
-          } else if (ev.type === 'ok') {
-            if (currentEvent) {
-              currentEvent.end = evDate;
-              if (currentEvent.type === 'falla') fallas.push(currentEvent);
-              else cortes.push(currentEvent);
-              currentEvent = null;
-            }
-          }
-        });
-
-        if (currentEvent) {
-          if (currentEvent.type === 'falla') fallas.push(currentEvent);
-          else cortes.push(currentEvent);
-        }
-
-        if (fallas.length > 0 || cortes.length > 0) {
-          powerEventsText += `⚡ ESTADO DEL SERVICIO ELÉCTRICO\n`;
-          
-          const formatDuration = (mins: number) => {
-            const hrs = Math.floor(mins / 60);
-            const m = mins % 60;
-            return hrs > 0 ? `${hrs}h ${m}m` : `${m}m`;
-          };
-
-          if (fallas.length > 0) {
-            powerEventsText += `Fallas en el servicio eléctrico: ${fallas.length}\n`;
-            let fallasDurationMins = 0;
-            fallas.forEach((falla, index) => {
-              const startStr = format(falla.start, 'h:mma');
-              if (falla.end) {
-                const endStr = format(falla.end, 'h:mma');
-                const durationMs = falla.end.getTime() - falla.start.getTime();
-                const durationMins = Math.round(durationMs / 60000);
-                fallasDurationMins += durationMins;
-                powerEventsText += `${index + 1}) ${startStr}/ ${endStr} - ${formatDuration(durationMins)}\n`;
-              } else {
-                powerEventsText += `${index + 1}) ${startStr}/ (Sigue interrumpido)\n`;
-              }
-            });
-            if (fallasDurationMins > 0) {
-              powerEventsText += `Duracion total de fallas: ${formatDuration(fallasDurationMins)}\n`;
-            }
-            if (cortes.length > 0) powerEventsText += `\n`;
-          }
-
-          if (cortes.length > 0) {
-            powerEventsText += `Cortes en el servicio eléctrico: ${cortes.length}\n`;
-            let cortesDurationMins = 0;
-            cortes.forEach((corte, index) => {
-              const startStr = format(corte.start, 'h:mma');
-              if (corte.end) {
-                const endStr = format(corte.end, 'h:mma');
-                const durationMs = corte.end.getTime() - corte.start.getTime();
-                const durationMins = Math.round(durationMs / 60000);
-                cortesDurationMins += durationMins;
-                powerEventsText += `${index + 1}) ${startStr}/ ${endStr} - ${formatDuration(durationMins)}\n`;
-              } else {
-                powerEventsText += `${index + 1}) ${startStr}/ (Sigue interrumpido)\n`;
-              }
-            });
-            if (cortesDurationMins > 0) {
-              powerEventsText += `Duracion total de cortes: ${formatDuration(cortesDurationMins)}\n`;
-            }
-          }
-          powerEventsText += `━━━━━━━━━━━━━━━━━━━━\n`;
+    // Determine arrival status for each equipment prior to shift
+    const arrivalStatuses: Record<string, string> = {};
+    equipments.forEach((eq) => {
+      const priorLogs = allLogs.filter(l => l.equipmentId === eq.id && safeToDate(l.timestamp) < start);
+      priorLogs.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+      let foundStatus: string | null = null;
+      for (const d of priorLogs) {
+        if (d.action === 'on' || d.action === 'off') {
+          foundStatus = d.action;
+          break;
         }
       }
+      if (!foundStatus) {
+        foundStatus = eq.status === 'on' ? 'on' : 'off';
+      }
+      arrivalStatuses[eq.id] = foundStatus;
+    });
 
-      // Observations
-      let observations = '';
-      const obsDoc = await getDoc(doc(db, 'config', 'current_shift_observations'));
-      if (obsDoc.exists()) {
-        observations = obsDoc.data().observations || '';
-      }
-      if (observations.trim()) {
-        text += `_NOTAS Y OBSERVACIONES:_\n${observations.trim()}\n━━━━━━━━━━━━━━━━━━━━\n`;
-      }
-      
-      // Maintenance
-      let maintenanceRecords = '';
-      const maintDoc = await getDoc(doc(db, 'config', 'current_shift_maintenance'));
-      if (maintDoc.exists()) {
-        maintenanceRecords = maintDoc.data().records || '';
+    // Group equipments
+    const groupedEquipments: Record<string, any[]> = {};
+    equipments.forEach(eq => {
+      const catId = eq.categoryId || 'uncategorized';
+      if (!groupedEquipments[catId]) groupedEquipments[catId] = [];
+      groupedEquipments[catId].push(eq);
+    });
+
+    // Format report
+    const startStr = `${format(start, "dd/MM/yy")} (${format(start, "h:mma")})`;
+    const endStr = `${format(end, "dd/MM/yy")} (${format(end, "h:mma")})`;
+
+    const currentOp = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Operador Automático';
+
+    let text = `👤 OP. EN TURNO: ${currentOp}\n`;
+    text += `📅 Ciclo Operativo: ${startStr} — ${endStr}\n`;
+    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+
+    // Power events
+    let powerEventsText = '';
+    if (powerEvents.length > 0 || (initialPowerState && initialPowerState.type !== 'ok')) {
+      const fallas: any[] = [];
+      const cortes: any[] = [];
+      let currentEvent: any = null;
+
+      if (initialPowerState && initialPowerState.type !== 'ok') {
+        currentEvent = {
+          start: safeToDate(initialPowerState.timestamp),
+          end: null,
+          type: initialPowerState.type
+        };
       }
 
-      // Equipments iteration
-      const catIds = Object.keys(groupedEquipments);
-      let hasAnyData = false;
-      
-      catIds.forEach(catId => {
-        const catName = categories[catId] || 'General / Sin Área';
-        const catEquips = groupedEquipments[catId];
+      powerEvents.forEach((ev) => {
+        const evDate = safeToDate(ev.timestamp);
+        if (ev.type === 'falla' || ev.type === 'corte') {
+          if (!currentEvent) {
+            currentEvent = { start: evDate, end: null, type: ev.type };
+          } else if (currentEvent.type !== ev.type) {
+            currentEvent.end = evDate;
+            if (currentEvent.type === 'falla') fallas.push(currentEvent);
+            else cortes.push(currentEvent);
+            currentEvent = { start: evDate, end: null, type: ev.type };
+          }
+        } else if (ev.type === 'ok') {
+          if (currentEvent) {
+            currentEvent.end = evDate;
+            if (currentEvent.type === 'falla') fallas.push(currentEvent);
+            else cortes.push(currentEvent);
+            currentEvent = null;
+          }
+        }
+      });
+
+      if (currentEvent) {
+        if (currentEvent.type === 'falla') fallas.push(currentEvent);
+        else cortes.push(currentEvent);
+      }
+
+      if (fallas.length > 0 || cortes.length > 0) {
+        powerEventsText += `⚡ ESTADO DEL SERVICIO ELÉCTRICO\n`;
         
-        let catText = `_ÁREA: ${catName.toUpperCase()}_\n`;
-        catText += `━━━━━━━━━━━━━━━━━━━━\n`;
-        let hasDataForCat = false;
+        const formatDuration = (mins: number) => {
+          const hrs = Math.floor(mins / 60);
+          const m = mins % 60;
+          return hrs > 0 ? `${hrs}h ${m}m` : `${m}m`;
+        };
 
-        catEquips.forEach(eq => {
-          const eqLogs = logs.filter(l => l.equipmentId === eq.id && (l.action === 'on' || l.action === 'off'));
-          const arrivalStatus = arrivalStatuses[eq.id];
-          const eqNameLower = eq.name.toLowerCase();
-          const isAlwaysVisible = eqNameLower.includes('playa') || eqNameLower.includes('pozo #4') || eqNameLower.includes('pozo 4');
-
-          if (eqLogs.length > 0 || (arrivalStatus === 'on' && eq.tiempo_operativo !== false) || isAlwaysVisible) {
-            hasDataForCat = true;
-            hasAnyData = true;
-            catText += `◻️ *${eq.name.trim()}*\n`;
-
-            const logsByDate: Record<string, any[]> = {};
-            eqLogs.forEach(log => {
-              const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
-              const dateStr = format(logDate, 'yyyy-MM-dd');
-              if (!logsByDate[dateStr]) logsByDate[dateStr] = [];
-              logsByDate[dateStr].push(log);
-            });
-
-            const startDateStr = format(start, 'yyyy-MM-dd');
-            if (eqLogs.length === 0 && arrivalStatus === 'on' && eq.tiempo_operativo !== false) {
-              logsByDate[startDateStr] = [];
+        if (fallas.length > 0) {
+          powerEventsText += `Fallas en el servicio eléctrico: ${fallas.length}\n`;
+          let fallasDurationMins = 0;
+          fallas.forEach((falla, index) => {
+            const sStr = format(falla.start, 'h:mma');
+            if (falla.end) {
+              const eStr = format(falla.end, 'h:mma');
+              const durationMs = falla.end.getTime() - falla.start.getTime();
+              const durationMins = Math.round(durationMs / 60000);
+              fallasDurationMins += durationMins;
+              powerEventsText += `${index + 1}) ${sStr}/ ${eStr} - ${formatDuration(durationMins)}\n`;
+            } else {
+              powerEventsText += `${index + 1}) ${sStr}/ (Sigue interrumpido)\n`;
             }
+          });
+          if (fallasDurationMins > 0) {
+            powerEventsText += `Duracion total de fallas: ${formatDuration(fallasDurationMins)}\n`;
+          }
+          if (cortes.length > 0) powerEventsText += `\n`;
+        }
 
-            const sortedDates = Object.keys(logsByDate).sort();
-            
-            sortedDates.forEach(dateKey => {
+        if (cortes.length > 0) {
+          powerEventsText += `Cortes en el servicio eléctrico: ${cortes.length}\n`;
+          let cortesDurationMins = 0;
+          cortes.forEach((corte, index) => {
+            const sStr = format(corte.start, 'h:mma');
+            if (corte.end) {
+              const eStr = format(corte.end, 'h:mma');
+              const durationMs = corte.end.getTime() - corte.start.getTime();
+              const durationMins = Math.round(durationMs / 60000);
+              cortesDurationMins += durationMins;
+              powerEventsText += `${index + 1}) ${sStr}/ ${eStr} - ${formatDuration(durationMins)}\n`;
+            } else {
+              powerEventsText += `${index + 1}) ${sStr}/ (Sigue interrumpido)\n`;
+            }
+          });
+          if (cortesDurationMins > 0) {
+            powerEventsText += `Duracion total de cortes: ${formatDuration(cortesDurationMins)}\n`;
+          }
+        }
+        powerEventsText += `━━━━━━━━━━━━━━━━━━━━\n`;
+      }
+    }
+
+    // Observations
+    let observations = '';
+    const obsDoc = await getDoc(doc(db, 'config', 'current_shift_observations'));
+    if (obsDoc.exists()) {
+      observations = obsDoc.data().observations || '';
+    }
+    if (observations.trim()) {
+      text += `_NOTAS Y OBSERVACIONES:_\n${observations.trim()}\n━━━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
+    // Maintenance
+    let maintenanceRecords = '';
+    const maintDoc = await getDoc(doc(db, 'config', 'current_shift_maintenance'));
+    if (maintDoc.exists()) {
+      maintenanceRecords = maintDoc.data().records || '';
+    }
+
+    // Equipments iteration
+    const catIds = Object.keys(groupedEquipments);
+    let hasAnyData = false;
+    
+    catIds.forEach(catId => {
+      const catName = categories[catId] || 'General / Sin Área';
+      const catEquips = groupedEquipments[catId];
+      
+      let catText = `_ÁREA: ${catName.toUpperCase()}_\n`;
+      catText += `━━━━━━━━━━━━━━━━━━━━\n`;
+      let hasDataForCat = false;
+
+      catEquips.forEach(eq => {
+        const eqLogs = logs.filter(l => l.equipmentId === eq.id && (l.action === 'on' || l.action === 'off'));
+        const arrivalStatus = arrivalStatuses[eq.id];
+        const eqNameLower = eq.name.toLowerCase();
+        const isAlwaysVisible = eqNameLower.includes('playa') || eqNameLower.includes('pozo #4') || eqNameLower.includes('pozo 4');
+
+        if (eqLogs.length > 0 || (arrivalStatus === 'on' && eq.tiempo_operativo !== false) || isAlwaysVisible) {
+          hasDataForCat = true;
+          hasAnyData = true;
+          catText += `◻️ *${eq.name.trim()}*\n`;
+
+          const logsByDate: Record<string, any[]> = {};
+          eqLogs.forEach(log => {
+            const logDate = safeToDate(log.timestamp);
+            const dateStr = format(logDate, 'yyyy-MM-dd');
+            if (!logsByDate[dateStr]) logsByDate[dateStr] = [];
+            logsByDate[dateStr].push(log);
+          });
+
+          const startDateStr = format(start, 'yyyy-MM-dd');
+          if (eqLogs.length === 0 && arrivalStatus === 'on' && eq.tiempo_operativo !== false) {
+            logsByDate[startDateStr] = [];
+          }
+
+          const sortedDates = Object.keys(logsByDate).sort();
+          
+          sortedDates.forEach(dateKey => {
+            const dayLogs = logsByDate[dateKey];
+            if (dayLogs.length > 0 || arrivalStatus === 'on') {
               const dateParts = dateKey.split('-').map(Number);
               const dateObj = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]);
               const dayName = format(dateObj, "EEEE d", { locale: es });
@@ -392,20 +320,20 @@ export function AutoReportGenerator() {
               
               catText += `          ${capitalizedDay}\n`;
               
-              const dayLogs = logsByDate[dateKey];
-              
-              if (dayLogs.length === 0 && arrivalStatus === 'on') {
-                catText += `• (En servicio desde el inicio)\n`;
+              if (dayLogs.length === 0) {
+                if (arrivalStatus === 'on') {
+                  catText += `• (En servicio desde el inicio / Sigue ON)\n`;
+                }
               }
 
               let i = 0;
               while (i < dayLogs.length) {
                 const log = dayLogs[i];
-                const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
+                const logDate = safeToDate(log.timestamp);
                 if (log.action === 'on') {
                   const timeOn = format(logDate, 'h:mma');
                   if (i + 1 < dayLogs.length && dayLogs[i+1].action === 'off') {
-                    const nextLogDate = dayLogs[i+1].timestamp ? dayLogs[i+1].timestamp.toDate() : new Date();
+                    const nextLogDate = safeToDate(dayLogs[i+1].timestamp);
                     const timeOff = format(nextLogDate, 'h:mma');
                     catText += `• ON ${timeOn}  |  OFF ${timeOff}\n`;
                     i += 2;
@@ -419,69 +347,162 @@ export function AutoReportGenerator() {
                   i++;
                 }
               }
+            }
+          });
+
+          if (eq.tiempo_operativo !== false) {
+            let totalMs = 0;
+            let isOn = arrivalStatus === 'on';
+            let lastOnTime = isOn ? start.getTime() : 0;
+
+            eqLogs.forEach(log => {
+              const logDate = safeToDate(log.timestamp);
+              const logTime = logDate.getTime();
+              if (log.action === 'on') {
+                if (!isOn) {
+                  isOn = true;
+                  lastOnTime = logTime;
+                }
+              } else if (log.action === 'off') {
+                if (isOn) {
+                  totalMs += Math.max(0, logTime - lastOnTime);
+                  isOn = false;
+                }
+              }
             });
 
-            if (eq.tiempo_operativo !== false) {
-              let totalMs = 0;
-              let isOn = arrivalStatus === 'on';
-              let lastOnTime = isOn ? start.getTime() : 0;
-
-              eqLogs.forEach(log => {
-                const logDate = log.timestamp ? log.timestamp.toDate() : new Date();
-                const logTime = logDate.getTime();
-                if (log.action === 'on') {
-                  if (!isOn) {
-                    isOn = true;
-                    lastOnTime = logTime;
-                  }
-                } else if (log.action === 'off') {
-                  if (isOn) {
-                    totalMs += (logTime - lastOnTime);
-                    isOn = false;
-                  }
-                }
-              });
-
-              if (isOn) {
-                const reportEndTime = end < now ? end : now;
-                totalMs += (reportEndTime.getTime() - lastOnTime);
+            if (isOn) {
+              const evalMs = Math.min(now.getTime(), end.getTime());
+              if (evalMs > lastOnTime) {
+                totalMs += (evalMs - lastOnTime);
               }
-
-              const totalMinutes = Math.round(totalMs / 60000);
-              let timeFormatted = '';
-              if (totalMinutes < 60) {
-                timeFormatted = `${totalMinutes}m`;
-              } else {
-                const hours = Math.floor(totalMinutes / 60);
-                const minutes = totalMinutes % 60;
-                timeFormatted = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-              }
-              
-              catText += `_Tiempo operativo: ${timeFormatted}_\n`;
             }
-          }
-        });
 
-        if (hasDataForCat) {
-          text += catText;
-          text += `━━━━━━━━━━━━━━━━━━━━\n`;
+            const totalMinutes = Math.round(totalMs / 60000);
+            let timeFormatted = '';
+            if (totalMinutes < 60) {
+              timeFormatted = `${totalMinutes}m`;
+            } else {
+              const hours = Math.floor(totalMinutes / 60);
+              const minutes = totalMinutes % 60;
+              timeFormatted = minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+            }
+            
+            catText += `_Tiempo operativo: ${timeFormatted}_\n`;
+          }
         }
       });
 
-      if (powerEventsText) {
-        text += powerEventsText;
-      }
-      
-      if (maintenanceRecords.trim()) {
-        text += `_REGISTRO DE MANTENIMIENTO:_\n${maintenanceRecords.trim()}\n`;
+      if (hasDataForCat) {
+        text += catText;
         text += `━━━━━━━━━━━━━━━━━━━━\n`;
       }
+    });
 
-      if (!hasAnyData && !observations.trim() && powerEvents.length === 0 && (!initialPowerState || initialPowerState.type === 'ok') && !maintenanceRecords.trim()) {
-        text += `\nNo se registraron movimientos en este turno.\n`;
+    if (powerEventsText) {
+      text += powerEventsText;
+    }
+    
+    if (maintenanceRecords.trim()) {
+      text += `_REGISTRO DE MANTENIMIENTO:_\n${maintenanceRecords.trim()}\n`;
+      text += `━━━━━━━━━━━━━━━━━━━━\n`;
+    }
+
+    if (!hasAnyData && !observations.trim() && powerEvents.length === 0 && (!initialPowerState || initialPowerState.type === 'ok') && !maintenanceRecords.trim()) {
+      text += `\nNo se registraron movimientos en este turno.\n`;
+    }
+
+    return text.trim();
+  };
+
+  // Pre-generate & stage report in real-time
+  const stageCurrentReport = async () => {
+    if (!configLoadedRef.current || isStagingRef.current) return;
+
+    const [endH, endM] = (endTime || '18:00').split(':').map(Number);
+    if (isNaN(endH) || isNaN(endM)) return;
+
+    const now = new Date();
+    let targetEnd = new Date(now);
+    targetEnd.setHours(endH, endM, 0, 0);
+
+    if (now > targetEnd) {
+      targetEnd.setDate(targetEnd.getDate() + 1);
+    }
+
+    const dateStr = format(targetEnd, 'yyyy-MM-dd');
+    const shiftKey = `${endTime}_${dateStr}`;
+
+    // Skip staging if already sent for this shiftKey
+    if (lastAutoSentShiftKey === shiftKey) return;
+
+    try {
+      isStagingRef.current = true;
+      const reportText = await buildCurrentReportText(targetEnd);
+      
+      const stagedDocRef = doc(db, 'whatsapp_backups', 'staged_upcoming_report');
+      await setDoc(stagedDocRef, {
+        id: 'staged_upcoming_report',
+        timestamp: new Date().toISOString(),
+        recipient: 'Grupo WhatsApp (Programado)',
+        message: reportText,
+        status: 'scheduled',
+        type: 'reporte_programado',
+        shiftKey: shiftKey,
+        scheduledTime: targetEnd.toISOString(),
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+    } catch (err) {
+      console.warn("[AutoReportGenerator] Error staging current report:", err);
+    } finally {
+      isStagingRef.current = false;
+    }
+  };
+
+  const checkAndTriggerAutoReport = async () => {
+    if (!configLoadedRef.current || isExecutingRef.current) return;
+    if (rangeMode === 'until_now' || !endTime || !autoSendEnabled) return;
+
+    const [endH, endM] = endTime.split(':').map(Number);
+    if (isNaN(endH) || isNaN(endM)) return;
+
+    const now = new Date();
+    const endToday = new Date(now);
+    endToday.setHours(endH, endM, 0, 0);
+
+    if (now < endToday) {
+      return;
+    }
+
+    const targetShiftEnd = endToday;
+    const dateStr = format(targetShiftEnd, 'yyyy-MM-dd');
+    const shiftKey = `${endTime}_${dateStr}`;
+
+    if (lastAutoSentShiftKey === shiftKey) return;
+
+    try {
+      isExecutingRef.current = true;
+      const settingsRef = doc(db, 'config', 'app_settings');
+      const docSnap = await getDoc(settingsRef);
+      if (docSnap.exists() && docSnap.data().lastAutoSentShiftKey === shiftKey) {
+        setLastAutoSentShiftKey(shiftKey);
+        isExecutingRef.current = false;
+        return;
       }
 
-      const finalReport = text.trim();
+      await setDoc(settingsRef, { lastAutoSentShiftKey: shiftKey }, { merge: true });
+      setLastAutoSentShiftKey(shiftKey);
+
+      console.log(`[AutoReportGenerator] Triggering auto report send for shiftKey: ${shiftKey}...`);
+      
+      // Get staged report or build fresh
+      let finalReport = '';
+      const stagedSnap = await getDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
+      if (stagedSnap.exists() && stagedSnap.data().message) {
+        finalReport = stagedSnap.data().message;
+      } else {
+        finalReport = await buildCurrentReportText(targetShiftEnd);
+      }
 
       // Send to WhatsApp API
       const response = await fetch('/api/send-whatsapp', {
@@ -490,7 +511,36 @@ export function AutoReportGenerator() {
         body: JSON.stringify({ message: finalReport })
       });
 
-      if (response.ok) {
+      const responseOk = response.ok;
+      let errorMsg = null;
+      if (!responseOk) {
+        try {
+          const errData = await response.json();
+          errorMsg = errData.error || 'Error al enviar a WhatsApp';
+        } catch (_) {
+          errorMsg = 'Error HTTP al enviar a WhatsApp';
+        }
+      }
+
+      // Create permanent backup entry
+      const backupId = `bk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      await setDoc(doc(db, 'whatsapp_backups', backupId), {
+        id: backupId,
+        timestamp: new Date().toISOString(),
+        recipient: 'Grupo WhatsApp (Automático)',
+        message: finalReport,
+        status: responseOk ? 'success' : 'failed',
+        error: errorMsg,
+        type: 'reporte_programado',
+        shiftKey: shiftKey
+      });
+
+      // Remove staged doc
+      try {
+        await deleteDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
+      } catch (_) {}
+
+      if (responseOk) {
         console.log("Global Auto Report sent successfully!");
 
         // Clear shift data in Firestore
@@ -526,8 +576,48 @@ export function AutoReportGenerator() {
       }
     } catch (err) {
       console.error("Error in Global Auto Report generator:", err);
+    } finally {
+      isExecutingRef.current = false;
     }
   };
 
-  return null; // Invisible component
+  useEffect(() => {
+    // Stage immediately
+    stageCurrentReport();
+
+    // Subscribe to real-time changes in logs, power events, observations, maintenance, equipment
+    const unsubLogs = onSnapshot(collection(db, 'logs'), () => stageCurrentReport());
+    const unsubPower = onSnapshot(collection(db, 'power_events'), () => stageCurrentReport());
+    const unsubObs = onSnapshot(doc(db, 'config', 'current_shift_observations'), () => stageCurrentReport());
+    const unsubMaint = onSnapshot(doc(db, 'config', 'current_shift_maintenance'), () => stageCurrentReport());
+    const unsubEquip = onSnapshot(collection(db, 'equipment'), () => stageCurrentReport());
+
+    const stageInterval = setInterval(() => stageCurrentReport(), 10000);
+    const triggerInterval = setInterval(() => checkAndTriggerAutoReport(), 5000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        stageCurrentReport();
+        checkAndTriggerAutoReport();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      unsubLogs();
+      unsubPower();
+      unsubObs();
+      unsubMaint();
+      unsubEquip();
+      clearInterval(stageInterval);
+      clearInterval(triggerInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  }, [endTime, startTime, rangeMode, autoSendEnabled, lastAutoSentShiftKey]);
+
+  return null;
 }
+

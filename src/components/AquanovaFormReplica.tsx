@@ -537,18 +537,28 @@ export const AquanovaFormReplica = () => {
         return hasKeyword;
       };
 
-      await Promise.all(allEquipment.map(async (eq) => {
-        const qLast = query(
-          collection(db, 'logs'), 
-          where('equipmentId', '==', eq.id), 
-          where('timestamp', '<', Timestamp.fromDate(start)), 
-          orderBy('timestamp', 'desc'), 
-          limit(1)
-        );
-        const snap = await getDocs(qLast);
-        
-        if (!snap.empty) {
-          initialStatusesCache[eq.id] = snap.docs[0].data().action;
+      const safeToDate = (ts: any): Date => {
+        if (!ts) return new Date();
+        if (typeof ts.toDate === 'function') return ts.toDate();
+        if (ts instanceof Date) return ts;
+        if (typeof ts === 'number') return new Date(ts);
+        if (typeof ts === 'string') return new Date(ts);
+        if (ts.seconds) return new Date(ts.seconds * 1000);
+        return new Date();
+      };
+
+      // Fetch all prior logs once to avoid composite index queries
+      const allPriorLogsSnap = await getDocs(collection(db, 'logs'));
+      const allPriorLogs: any[] = [];
+      allPriorLogsSnap.forEach(d => allPriorLogs.push(d.data()));
+
+      allEquipment.forEach((eq) => {
+        const prior = allPriorLogs
+          .filter(l => l.equipmentId === eq.id && safeToDate(l.timestamp) < start)
+          .sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+
+        if (prior.length > 0) {
+          initialStatusesCache[eq.id] = prior[0].action;
         } else {
           const name = eq.data().name.toLowerCase();
           const isBlower = name.includes('blower') || name.includes('bl') || name.includes('soplador');
@@ -578,7 +588,7 @@ export const AquanovaFormReplica = () => {
             initialStatusesCache[eq.id] = 'off';
           }
         }
-      }));
+      });
 
       unsubscribes.push(onSnapshot(qLogs, async (snapshot) => {
         const getGeneratorStats = (categoryName: string) => {

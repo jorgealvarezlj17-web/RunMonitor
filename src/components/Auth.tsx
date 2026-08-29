@@ -256,7 +256,12 @@ export const Auth: React.FC = () => {
         }
       }
     } catch (error: any) {
-      console.error('Error signing in with Google:', error);
+      const errorCode = error?.code || '';
+      
+      if (errorCode !== 'auth/popup-closed-by-user') {
+        console.error('Error signing in with Google:', error);
+      }
+      
       try {
         const jsonError = JSON.parse(error.message);
         setError(jsonError.error);
