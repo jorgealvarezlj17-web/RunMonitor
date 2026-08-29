@@ -456,7 +456,12 @@ export const Settings: React.FC = () => {
           greenApiToken: config.greenApiToken
         })
       });
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error(`El servidor devolvió un formato inválido (HTML/404). Si estás en Vercel, el backend de WhatsApp no se ejecuta en estático. Código HTTP: ${response.status}`);
+      }
       if (response.ok && data.success) {
         const groups = (data.chats || []).filter((c: any) => c.isGroup);
         setAvailableGroups(groups);
@@ -492,7 +497,12 @@ export const Settings: React.FC = () => {
         })
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error(`Respuesta no-JSON del servidor (HTML/404). En Vercel el backend no responde a /api/test-whatsapp. Código: ${response.status}`);
+      }
       if (response.ok && data.success) {
         sounds.playSuccess();
         setTestStatus({ type: 'success', message: '¡Mensaje de prueba enviado con éxito a tu WhatsApp!' });

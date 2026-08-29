@@ -888,7 +888,13 @@ export const CorteReporte: React.FC = () => {
         body: JSON.stringify({ message: textToSend })
       });
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error(`El servidor devolvió un error (HTML/404). En Vercel, el backend de mensajería no está disponible por defecto. Código: ${response.status}`);
+      }
+      
       if (response.ok && data.success) {
         setSendWhatsAppStatus({ type: 'success', message: '¡Reporte enviado exitosamente a WhatsApp!' });
       } else {

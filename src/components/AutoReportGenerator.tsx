@@ -519,12 +519,17 @@ export function AutoReportGenerator() {
           });
 
           if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              backupStatus = 'success';
-            } else {
+            try {
+              const data = await response.json();
+              if (data.success) {
+                backupStatus = 'success';
+              } else {
+                backupStatus = 'failed';
+                errorMsg = data.error || 'Error al enviar a WhatsApp';
+              }
+            } catch (parseError) {
               backupStatus = 'failed';
-              errorMsg = data.error || 'Error al enviar a WhatsApp';
+              errorMsg = `Respuesta no válida (posible falta de backend en Vercel). Estado: ${response.status}`;
             }
           } else {
             backupStatus = 'failed';
