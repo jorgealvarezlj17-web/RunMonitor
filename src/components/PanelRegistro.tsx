@@ -10,8 +10,9 @@ import {
 import { db } from '../firebase';
 import { handleFirestoreError, OperationType } from '../firestoreUtils';
 import { 
-  Activity, 
-  MonitorDot
+  Zap,
+  ZapOff,
+  AlertTriangle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -21,6 +22,7 @@ interface Equipment {
   name: string;
   status: 'on' | 'off';
   categoryId?: string;
+  imageUrl?: string;
   tiempo_operativo?: boolean;
   totalUsageTime?: number;
   lastTurnedOn?: any;
@@ -43,11 +45,20 @@ interface LogEntry {
   reason?: string;
 }
 
+interface PowerEvent {
+  id: string;
+  type: 'falla' | 'corte' | 'ok' | string;
+  timestamp: any;
+  userUid?: string;
+  userEmail?: string;
+  notes?: string;
+}
+
 export const PanelRegistro: React.FC = () => {
   const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [powerEvents, setPowerEvents] = useState<any[]>([]);
+  const [powerEvents, setPowerEvents] = useState<PowerEvent[]>([]);
   const [shiftStartTime, setShiftStartTime] = useState('18:00');
 
   // Helper safely convert Firestore timestamp/Date
@@ -123,9 +134,9 @@ export const PanelRegistro: React.FC = () => {
     });
 
     const unsubPower = onSnapshot(collection(db, 'power_events'), (snapshot) => {
-      const items: any[] = [];
+      const items: PowerEvent[] = [];
       snapshot.forEach((d) => {
-        items.push({ id: d.id, ...d.data() });
+        items.push({ id: d.id, ...d.data() } as PowerEvent);
       });
       setPowerEvents(items);
     }, (error) => {
@@ -161,11 +172,73 @@ export const PanelRegistro: React.FC = () => {
     return d >= shiftStart && d <= shiftEnd;
   }).sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
 
-  // Filter power events for current shift
+  // Filter and sort power events for current shift
   const shiftPowerEvents = powerEvents.filter(p => {
     const d = safeToDate(p.timestamp);
     return d >= shiftStart && d <= shiftEnd;
   }).sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
+
+  // Count distinct occurrences
+  const shiftFallasCount = shiftPowerEvents.filter(e => e.type === 'falla').length;
+  const shiftCortesCount = shiftPowerEvents.filter(e => e.type === 'corte').length;
+  
+  // Latest overall power state
+  const latestPowerEvent = powerEvents.length > 0 ? powerEvents[powerEvents.length - 1] : null;
+  const currentGlobalPowerType = latestPowerEvent ? latestPowerEvent.type : 'ok';
+
+  // --- Calculate Accumulated Duration for Fallas and Cortes in this Shift ---
+  let totalFallaMs = 0;
+  let totalCorteMs = 0;
+
+  // Look at prior power events to determine state at shift start
+  const priorPower = powerEvents
+    .filter(p => safeToDate(p.timestamp) < shiftStart)
+    .sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+
+  let activeTrackType = priorPower.length > 0 ? priorPower[0].type : 'ok';
+  let activeTrackStartTime = (activeTrackType === 'falla' || activeTrackType === 'corte') 
+    ? shiftStart.getTime() 
+    : 0;
+
+  shiftPowerEvents.forEach((ev) => {
+    const evTime = safeToDate(ev.timestamp).getTime();
+    
+    if (activeTrackType === 'falla' && activeTrackStartTime > 0) {
+      totalFallaMs += Math.max(0, evTime - activeTrackStartTime);
+    } else if (activeTrackType === 'corte' && activeTrackStartTime > 0) {
+      totalCorteMs += Math.max(0, evTime - activeTrackStartTime);
+    }
+
+    activeTrackType = ev.type;
+    if (ev.type === 'falla' || ev.type === 'corte') {
+      activeTrackStartTime = evTime;
+    } else {
+      activeTrackStartTime = 0;
+    }
+  });
+
+  // If still ongoing at current moment
+  if (activeTrackStartTime > 0 && (activeTrackType === 'falla' || activeTrackType === 'corte')) {
+    const evalMs = Math.min(currentTime.getTime(), shiftEnd.getTime());
+    if (evalMs > activeTrackStartTime) {
+      if (activeTrackType === 'falla') {
+        totalFallaMs += (evalMs - activeTrackStartTime);
+      } else if (activeTrackType === 'corte') {
+        totalCorteMs += (evalMs - activeTrackStartTime);
+      }
+    }
+  }
+
+  const formatDurationStr = (ms: number) => {
+    const totalMinutes = Math.round(ms / 60000);
+    const hrs = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    if (totalMinutes === 0) return '0m';
+    return `${hrs > 0 ? `${hrs}h ` : ''}${mins}m`;
+  };
+
+  const fallaTimeString = formatDurationStr(totalFallaMs);
+  const corteTimeString = formatDurationStr(totalCorteMs);
 
   // Filter and group equipments
   const groupedEquipments: Record<string, Equipment[]> = {};
@@ -178,31 +251,40 @@ export const PanelRegistro: React.FC = () => {
   });
 
   return (
-    <div className="space-y-10 pb-16 max-w-6xl mx-auto px-4 sm:px-6">
-      <div className="flex flex-col items-center justify-center text-center pb-8 pt-6">
-        <div className="w-16 h-16 bg-slate-900 rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-slate-900/20">
-          <MonitorDot size={32} className="text-cyan-400" />
+    <div className="space-y-6 pb-16 max-w-5xl mx-auto px-4 sm:px-6">
+      {/* Header */}
+      <div className="pt-2 pb-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Panel de Registro</h2>
+          <p className="text-xs text-slate-500 font-medium mt-1">
+            Turno actual: <span className="font-semibold text-slate-700">{format(shiftStart, "h:mma", { locale: es })}</span> a <span className="font-semibold text-slate-700">{format(shiftEnd, "h:mma", { locale: es })}</span>
+          </p>
         </div>
-        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Tablero de Registro</h2>
-        <p className="text-slate-500 mt-2 font-medium">Monitoreo digital de tiempos y conteos del turno actual</p>
       </div>
 
-      <div className="space-y-8">
+      {/* Categories Tables for Equipments */}
+      <div className="space-y-6">
         {categories.map(cat => {
           const catEquips = groupedEquipments[cat.id];
           if (!catEquips || catEquips.length === 0) return null;
 
           return (
-            <div key={cat.id} className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-              {/* Category Header */}
-              <div className="bg-slate-50/50 border-b border-slate-200 px-6 py-4">
-                <h3 className="text-sm font-black uppercase tracking-widest text-slate-700 flex items-center gap-2">
-                  <Activity size={18} className="text-cyan-600" />
+            <div key={cat.id} className="bg-white border border-slate-200/90 rounded-xl overflow-hidden shadow-xs">
+              {/* Category Header with Colorful Column Headers */}
+              <div className="px-5 py-3 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
                   {cat.name}
-                </h3>
+                </span>
+
+                {/* Table Header Titles in distinctive colors */}
+                <div className="hidden sm:flex items-center gap-5 text-[11px] font-bold uppercase tracking-wider">
+                  <span className="w-16 text-center text-rose-600">OFF</span>
+                  <span className="w-16 text-center text-emerald-600">ON</span>
+                  <span className="w-24 text-center text-indigo-600">TIEMPO</span>
+                </div>
               </div>
-              
-              {/* Equipments List */}
+
+              {/* Rows */}
               <div className="divide-y divide-slate-100">
                 {catEquips.map(eq => {
                   const isON = eq.status === 'on';
@@ -248,36 +330,51 @@ export const PanelRegistro: React.FC = () => {
                   const shiftTimeString = `${hrs > 0 ? `${hrs}h ` : ''}${mins}m`;
 
                   return (
-                    <div key={eq.id} className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-50/50 transition-colors">
-                      {/* Left: Name */}
-                      <div className="flex items-center gap-3">
-                        <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isON ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-slate-300'}`} />
-                        <span className="font-bold text-slate-800 text-base">{eq.name}</span>
+                    <div 
+                      key={eq.id} 
+                      className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors"
+                    >
+                      {/* Left: Name & Status */}
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${isON ? 'bg-emerald-500 shadow-xs shadow-emerald-400' : 'bg-slate-300'}`} />
+                        <span className="font-semibold text-slate-800 text-sm truncate">
+                          {eq.name}
+                        </span>
                       </div>
 
-                      {/* Right: Clean Digital Counters */}
-                      <div className="bg-slate-100 shadow-inner border border-slate-200/60 rounded-xl p-2 flex items-center shrink-0">
-                        <div className="flex flex-col items-center px-4 min-w-[4rem]">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">OFF</span>
-                          <span className="font-mono text-slate-700 text-lg font-black">{offCount}</span>
+                      {/* Right: Parameter Columns with larger black numbers */}
+                      <div className="flex items-center justify-between sm:justify-end gap-5 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                        {/* OFF */}
+                        <div className="w-16 text-center flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-rose-600 uppercase sm:hidden block mb-0.5">OFF</span>
+                          <span className={`font-mono text-base font-black ${
+                            offCount > 0 ? 'text-slate-900' : 'text-slate-300'
+                          }`}>
+                            {offCount}
+                          </span>
                         </div>
-                        
-                        <div className="w-px h-8 bg-slate-200"></div>
-                        
-                        <div className="flex flex-col items-center px-4 min-w-[4rem]">
-                          <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">ON</span>
-                          <span className="font-mono text-slate-700 text-lg font-black">{onCount}</span>
+
+                        {/* ON */}
+                        <div className="w-16 text-center flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-emerald-600 uppercase sm:hidden block mb-0.5">ON</span>
+                          <span className={`font-mono text-base font-black ${
+                            onCount > 0 ? 'text-slate-900' : 'text-slate-300'
+                          }`}>
+                            {onCount}
+                          </span>
                         </div>
-                        
-                        {eq.tiempo_operativo !== false && (
-                          <>
-                            <div className="w-px h-8 bg-slate-200"></div>
-                            <div className="flex flex-col items-center px-5 min-w-[6rem]">
-                              <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-0.5">TIEMPO</span>
-                              <span className="font-mono text-cyan-700 text-lg font-black">{shiftTimeString}</span>
-                            </div>
-                          </>
-                        )}
+
+                        {/* TIEMPO */}
+                        <div className="w-24 text-center flex flex-col items-center">
+                          <span className="text-[10px] font-bold text-indigo-600 uppercase sm:hidden block mb-0.5">TIEMPO</span>
+                          <span className={`font-mono text-base font-black ${
+                            eq.tiempo_operativo !== false && totalMinutes > 0
+                              ? 'text-slate-900'
+                              : 'text-slate-300'
+                          }`}>
+                            {eq.tiempo_operativo !== false ? shiftTimeString : '—'}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -286,6 +383,129 @@ export const PanelRegistro: React.FC = () => {
             </div>
           );
         })}
+      </div>
+
+      {/* Electrical Registry Table - Structured with vibrant colors */}
+      <div className="bg-white border border-slate-200/90 rounded-xl overflow-hidden shadow-xs">
+        {/* Category Header with Columns */}
+        <div className="px-5 py-3 bg-slate-50/90 border-b border-slate-200 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-amber-500/10 flex items-center justify-center text-amber-600">
+              <Zap size={15} />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Registro Eléctrico (Suministro)
+            </span>
+          </div>
+
+          {/* Table Header Titles matching Equipment */}
+          <div className="hidden sm:flex items-center gap-5 text-[11px] font-bold uppercase tracking-wider">
+            <span className="w-16 text-center text-slate-600">ESTADO</span>
+            <span className="w-16 text-center text-amber-600">EVENTOS</span>
+            <span className="w-24 text-center text-indigo-600">TIEMPO</span>
+          </div>
+        </div>
+
+        {/* Rows: Falla Eléctrica & Corte Eléctrico */}
+        <div className="divide-y divide-slate-100">
+          {/* Row 1: Falla Eléctrica */}
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Colorful Icon Box */}
+              <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 border border-amber-200/70 flex items-center justify-center shrink-0 shadow-2xs">
+                <AlertTriangle size={17} />
+              </div>
+              <span className="font-semibold text-slate-800 text-sm">
+                Falla Eléctrica
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-5 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+              {/* Estado */}
+              <div className="w-16 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase sm:hidden block mb-0.5">ESTADO</span>
+                {currentGlobalPowerType === 'falla' ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-amber-500 text-white animate-pulse shadow-xs">
+                    ACTIVA
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    OK
+                  </span>
+                )}
+              </div>
+
+              {/* Eventos / Conteo */}
+              <div className="w-16 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-amber-600 uppercase sm:hidden block mb-0.5">EVENTOS</span>
+                <span className={`font-mono text-base font-black ${
+                  shiftFallasCount > 0 ? 'text-slate-900' : 'text-slate-300'
+                }`}>
+                  {shiftFallasCount}
+                </span>
+              </div>
+
+              {/* Tiempo Acumulado */}
+              <div className="w-24 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-indigo-600 uppercase sm:hidden block mb-0.5">TIEMPO</span>
+                <span className={`font-mono text-base font-black ${
+                  totalFallaMs > 0 ? 'text-slate-900' : 'text-slate-300'
+                }`}>
+                  {fallaTimeString}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Row 2: Corte Eléctrico */}
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/70 transition-colors">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Colorful Icon Box */}
+              <div className="w-8 h-8 rounded-lg bg-rose-100 text-rose-600 border border-rose-200/70 flex items-center justify-center shrink-0 shadow-2xs">
+                <ZapOff size={17} />
+              </div>
+              <span className="font-semibold text-slate-800 text-sm">
+                Corte Eléctrico
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between sm:justify-end gap-5 pt-1 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+              {/* Estado */}
+              <div className="w-16 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-slate-500 uppercase sm:hidden block mb-0.5">ESTADO</span>
+                {currentGlobalPowerType === 'corte' ? (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-rose-500 text-white animate-pulse shadow-xs">
+                    ACTIVO
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    OK
+                  </span>
+                )}
+              </div>
+
+              {/* Eventos / Conteo */}
+              <div className="w-16 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-rose-600 uppercase sm:hidden block mb-0.5">EVENTOS</span>
+                <span className={`font-mono text-base font-black ${
+                  shiftCortesCount > 0 ? 'text-slate-900' : 'text-slate-300'
+                }`}>
+                  {shiftCortesCount}
+                </span>
+              </div>
+
+              {/* Tiempo Acumulado */}
+              <div className="w-24 text-center flex flex-col items-center">
+                <span className="text-[10px] font-bold text-indigo-600 uppercase sm:hidden block mb-0.5">TIEMPO</span>
+                <span className={`font-mono text-base font-black ${
+                  totalCorteMs > 0 ? 'text-slate-900' : 'text-slate-300'
+                }`}>
+                  {corteTimeString}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

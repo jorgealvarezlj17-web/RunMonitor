@@ -85,9 +85,10 @@ interface WhatsAppBackupRecord {
   timestamp: string;
   recipient: string;
   message: string;
-  status: 'success' | 'failed' | 'scheduled';
+  status: 'success' | 'failed' | 'scheduled' | 'saved' | 'manual' | string;
   error?: string | null;
   provider?: string;
+  type?: string;
 }
 
 type SettingsTab = 'schedule' | 'whatsapp' | 'backups' | 'categories' | 'system';
@@ -545,36 +546,52 @@ export const Settings: React.FC = () => {
     setIsResetting(true);
     setResetStatus('idle');
     try {
-      const batch = writeBatch(db);
-
       // 1. Fetch all documents in logs and delete them
       const logsSnap = await getDocs(collection(db, 'logs'));
-      logsSnap.docs.forEach((docSnap) => {
-        batch.delete(docSnap.ref);
-      });
-
       // 1.5. Fetch all documents in power_events and delete them
       const powerSnap = await getDocs(collection(db, 'power_events'));
-      powerSnap.docs.forEach((docSnap) => {
-        batch.delete(docSnap.ref);
-      });
-
-      // 2. Fetch all equipment and reset totalUsageTime to 0
+      // 2. Fetch all equipment and reset them to status: 'off', totalUsageTime: 0
       const equipSnap = await getDocs(collection(db, 'equipment'));
       const now = Timestamp.now();
-      equipSnap.docs.forEach((docSnap) => {
-        const eqData = docSnap.data();
-        const updateData: any = {
-          totalUsageTime: 0,
-          lastUpdated: now
-        };
-        if (eqData.status === 'on') {
-          updateData.lastTurnedOn = now;
-        }
-        batch.update(docSnap.ref, updateData);
-      });
 
-      await batch.commit();
+      // Collect all batch operations and commit in chunks of 400
+      let batch = writeBatch(db);
+      let opCount = 0;
+
+      const commitAndResetBatchIfNeeded = async () => {
+        opCount++;
+        if (opCount >= 400) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
+      };
+
+      for (const docSnap of logsSnap.docs) {
+        batch.delete(docSnap.ref);
+        await commitAndResetBatchIfNeeded();
+      }
+
+      for (const docSnap of powerSnap.docs) {
+        batch.delete(docSnap.ref);
+        await commitAndResetBatchIfNeeded();
+      }
+
+      for (const docSnap of equipSnap.docs) {
+        batch.update(docSnap.ref, {
+          status: 'off',
+          totalUsageTime: 0,
+          lastTurnedOn: null,
+          lastOffReason: null,
+          lastUpdated: now
+        });
+        await commitAndResetBatchIfNeeded();
+      }
+
+      if (opCount > 0) {
+        await batch.commit();
+      }
+
       sounds.playSuccess();
       setResetStatus('success');
       setShowResetConfirm(false);
@@ -621,30 +638,6 @@ export const Settings: React.FC = () => {
             <p className="text-xs sm:text-sm text-slate-500 font-medium">Administra horarios de corte, integraciones y áreas de la planta</p>
           </div>
         </div>
-
-        {/* Global Save Button if Admin */}
-        {isAdmin && !isReadOnly && (
-          <button
-            type="button"
-            onClick={handleSaveConfig}
-            disabled={isSavingConfig}
-            className="flex items-center justify-center gap-2 py-3 px-6 rounded-xl bg-cyan-600 text-white font-bold hover:bg-cyan-700 active:scale-95 transition-all shadow-md shadow-cyan-600/20 text-sm disabled:opacity-50 self-start sm:self-auto"
-          >
-            {isSavingConfig ? (
-              <Loader2 className="animate-spin" size={18} />
-            ) : saveStatus === 'success' ? (
-              <>
-                <CheckCircle2 size={18} />
-                <span>¡Guardado!</span>
-              </>
-            ) : (
-              <>
-                <Save size={18} />
-                <span>Guardar Cambios</span>
-              </>
-            )}
-          </button>
-        )}
       </header>
 
       {/* Read-only warning */}
@@ -867,34 +860,6 @@ export const Settings: React.FC = () => {
                       <p className="text-[11px] text-slate-500 font-medium">Establece la hora exacta de inicio y cierre</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[10px] font-bold">
-                    <button
-                      type="button"
-                      disabled={isReadOnly || !isAdmin}
-                      onClick={() => {
-                        sounds.playClick();
-                        setConfig({ ...config, shiftRangeMode: 'scheduled' });
-                      }}
-                      className={`px-3 py-1.5 rounded-md transition-all ${
-                        config.shiftRangeMode === 'scheduled' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Programado
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isReadOnly || !isAdmin}
-                      onClick={() => {
-                        sounds.playClick();
-                        setConfig({ ...config, shiftRangeMode: 'until_now' });
-                      }}
-                      className={`px-3 py-1.5 rounded-md transition-all ${
-                        config.shiftRangeMode === 'until_now' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                      }`}
-                    >
-                      Hasta Ahora
-                    </button>
-                  </div>
                 </div>
 
                 <div className="space-y-6">
@@ -1052,10 +1017,16 @@ export const Settings: React.FC = () => {
                   type="button"
                   onClick={handleSaveConfig}
                   disabled={isSavingConfig}
-                  className="w-full sm:w-auto px-8 py-3.5 bg-cyan-600 hover:bg-cyan-700 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2"
+                  className="w-full sm:w-auto px-8 py-3.5 bg-cyan-600 hover:bg-cyan-700 active:scale-[0.99] text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 disabled:opacity-50"
                 >
-                  {isSavingConfig ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                  <span>Guardar Horarios de Corte</span>
+                  {isSavingConfig ? (
+                    <Loader2 className="animate-spin" size={18} />
+                  ) : saveStatus === 'success' ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <Save size={18} />
+                  )}
+                  <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios'}</span>
                 </button>
               </div>
             )}
@@ -1532,10 +1503,16 @@ export const Settings: React.FC = () => {
                     type="button"
                     onClick={handleSaveConfig}
                     disabled={isSavingConfig}
-                    className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-cyan-600 text-white font-extrabold hover:bg-cyan-700 transition-all shadow-md shadow-cyan-500/20 text-sm disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-cyan-600 text-white font-extrabold hover:bg-cyan-700 active:scale-[0.99] transition-all shadow-md shadow-cyan-500/20 text-sm disabled:opacity-50"
                   >
-                    {isSavingConfig ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
-                    <span>Guardar Configuración</span>
+                    {isSavingConfig ? (
+                      <Loader2 className="animate-spin" size={18} />
+                    ) : saveStatus === 'success' ? (
+                      <CheckCircle2 size={18} />
+                    ) : (
+                      <Save size={18} />
+                    )}
+                    <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios'}</span>
                   </button>
                 )}
               </div>
@@ -1549,23 +1526,23 @@ export const Settings: React.FC = () => {
         {activeTab === 'backups' && (
           <motion.div
             key="tab-backups"
-            initial={{ opacity: 0, y: 8 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="space-y-6"
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+            className="space-y-4"
           >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+            <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
               {/* Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl border border-blue-200/60">
-                    <Database size={22} />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 bg-slate-100 text-slate-700 rounded-lg">
+                    <Database size={18} />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">Respaldo de Notificaciones & Reportes</h2>
-                    <p className="text-xs text-slate-500 font-medium">
-                      Historial completo de todos los mensajes de WhatsApp enviados y fallidos
+                    <h2 className="text-base font-bold text-slate-900">Historial de Respaldos</h2>
+                    <p className="text-xs text-slate-500">
+                      Registro de cortes automáticos, manuales y envíos de WhatsApp
                     </p>
                   </div>
                 </div>
@@ -1575,47 +1552,47 @@ export const Settings: React.FC = () => {
                     type="button"
                     onClick={fetchBackups}
                     disabled={isLoadingBackups}
-                    className="p-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all flex items-center gap-1.5 text-xs font-bold disabled:opacity-50"
-                    title="Actualizar respaldo"
+                    className="h-8 px-2.5 rounded-lg border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors flex items-center gap-1.5 text-xs font-medium disabled:opacity-50"
+                    title="Actualizar lista de respaldos"
                   >
-                    <RefreshCw size={15} className={isLoadingBackups ? 'animate-spin text-blue-600' : ''} />
-                    <span>Refrescar</span>
+                    <RefreshCw size={13} className={isLoadingBackups ? 'animate-spin text-blue-600' : ''} />
+                    <span>Actualizar</span>
                   </button>
 
                   {isAdmin && backups.length > 0 && (
                     <button
                       type="button"
                       onClick={() => setShowClearConfirm(true)}
-                      className="p-2.5 rounded-xl border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-all flex items-center gap-1.5 text-xs font-bold"
+                      className="h-8 px-2.5 rounded-lg border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors flex items-center gap-1 text-xs font-medium"
                     >
-                      <Trash2 size={15} />
-                      <span>Vaciar Respaldo</span>
+                      <Trash2 size={13} />
+                      <span>Vaciar</span>
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* Confirm Clear Modal inline alert */}
+              {/* Confirm Clear Alert */}
               {showClearConfirm && (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-xs space-y-3">
-                  <div className="flex items-center gap-2 font-bold text-rose-900">
-                    <AlertTriangle size={18} className="text-rose-600" />
-                    <span>¿Confirmas que deseas eliminar permanentemente TODO el historial de respaldo?</span>
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-semibold text-rose-900">
+                    <AlertTriangle size={15} className="text-rose-600 shrink-0" />
+                    <span>¿Confirmas que deseas eliminar todo el historial de respaldo?</span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={handleClearAllBackups}
                       disabled={isClearingBackups}
-                      className="px-4 py-2 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all text-xs flex items-center gap-1.5"
+                      className="h-7 px-3 bg-rose-600 text-white rounded-md font-medium hover:bg-rose-700 transition-colors text-xs flex items-center gap-1"
                     >
-                      {isClearingBackups ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      {isClearingBackups ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                       <span>Sí, eliminar todo</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowClearConfirm(false)}
-                      className="px-4 py-2 bg-white text-slate-700 border border-slate-200 rounded-xl font-bold hover:bg-slate-50 transition-all text-xs"
+                      className="h-7 px-3 bg-white text-slate-700 border border-slate-200 rounded-md font-medium hover:bg-slate-50 transition-colors text-xs"
                     >
                       Cancelar
                     </button>
@@ -1625,92 +1602,83 @@ export const Settings: React.FC = () => {
 
               {/* Live Pre-generated Staged Report Card */}
               {stagedBackup && (
-                <div className="p-5 bg-gradient-to-br from-amber-50 via-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-200/80 shadow-xs space-y-3.5">
+                <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200 text-xs space-y-2.5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <span className="px-3 py-1 rounded-full text-xs font-black bg-amber-500 text-white flex items-center gap-1.5 shadow-xs animate-pulse">
-                        ⚡ REPORTE PRE-GENERADO EN VIVO
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-white flex items-center gap-1">
+                        ⚡ Borrador en Vivo
                       </span>
-                      <span className="text-xs text-amber-900 font-bold">
-                        Programado para salir automáticamente a las {config.shiftEndTime || '18:00'}
+                      <span className="text-xs text-amber-900 font-medium">
+                        Corte programado: {config.shiftEndTime || '18:00'}
                       </span>
                     </div>
 
-                    <span className="text-[11px] text-amber-800/80 font-mono font-bold">
-                      Última actualización: {format(new Date(stagedBackup.timestamp), 'hh:mm:ss a')}
-                    </span>
-                  </div>
-
-                  <div className="bg-slate-950 text-amber-300 p-4 rounded-xl font-mono text-xs overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-56 overflow-y-auto shadow-inner">
-                    {stagedBackup.message}
-                  </div>
-
-                  {resendStatus && resendStatus.id === 'staged_upcoming_report' && (
-                    <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                      resendStatus.success ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'
-                    }`}>
-                      {resendStatus.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-                      <span>{resendStatus.message}</span>
-                    </div>
-                  )}
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-amber-200/60">
-                    <p className="text-[11px] text-amber-800/90 font-medium italic">
-                      ℹ️ Este texto se guarda en respaldo y se actualiza automáticamente con cada cambio en la bitácora antes de la hora de salida.
-                    </p>
-
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <button
                         type="button"
                         onClick={handleSendStagedNow}
                         disabled={resendingId === 'staged_upcoming_report'}
-                        className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-xs active:scale-95 disabled:opacity-50"
+                        className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
+                        title="Enviar borrador a WhatsApp inmediatamente"
                       >
-                        {resendingId === 'staged_upcoming_report' ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                        <span>Enviar Ahora a WhatsApp</span>
+                        {resendingId === 'staged_upcoming_report' ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                        <span>Enviar Ahora</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => handleCopyBackup(stagedBackup)}
-                        className="px-3 py-2 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5"
+                        className="h-7 px-2.5 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100/60 font-medium text-xs rounded-md transition-colors flex items-center gap-1"
                       >
-                        {copiedId === stagedBackup.id ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                        <span>{copiedId === stagedBackup.id ? '¡Copiado!' : 'Copiar Texto'}</span>
+                        {copiedId === stagedBackup.id ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                        <span>{copiedId === stagedBackup.id ? 'Copiado' : 'Copiar'}</span>
                       </button>
                     </div>
                   </div>
+
+                  <div className="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                    {stagedBackup.message}
+                  </div>
+
+                  {resendStatus && resendStatus.id === 'staged_upcoming_report' && (
+                    <div className={`p-2 rounded-lg text-xs font-medium flex items-center gap-1.5 ${
+                      resendStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    }`}>
+                      {resendStatus.success ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                      <span>{resendStatus.message}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Search Bar */}
+              {/* Search & Filter Bar */}
               <div className="relative w-full">
-                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={backupSearch}
                   onChange={(e) => setBackupSearch(e.target.value)}
-                  placeholder="Buscar en el historial de respaldos..."
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                  placeholder="Buscar por texto, destino o fecha..."
+                  className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-slate-400 focus:bg-white transition-colors"
                 />
               </div>
 
               {/* List of Backups */}
               {isLoadingBackups ? (
-                <div className="py-12 text-center text-slate-400 space-y-2">
-                  <Loader2 size={24} className="animate-spin mx-auto text-blue-600" />
-                  <p className="text-xs font-medium">Cargando registros de respaldo...</p>
+                <div className="py-8 text-center text-slate-400 space-y-2">
+                  <Loader2 size={20} className="animate-spin mx-auto text-slate-400" />
+                  <p className="text-xs">Cargando respaldos...</p>
                 </div>
               ) : backups.length === 0 ? (
-                <div className="py-12 border border-dashed border-slate-200 rounded-2xl text-center space-y-2">
-                  <Database size={32} className="mx-auto text-slate-300" />
-                  <p className="text-sm font-bold text-slate-600">No hay respaldos registrados</p>
-                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
-                    Cada vez que se envíe una notificación de WhatsApp, la copia de seguridad se guardará automáticamente aquí.
+                <div className="py-8 border border-dashed border-slate-200 rounded-xl text-center space-y-1.5">
+                  <Database size={24} className="mx-auto text-slate-300" />
+                  <p className="text-xs font-bold text-slate-600">No hay respaldos registrados</p>
+                  <p className="text-[11px] text-slate-400 max-w-xs mx-auto">
+                    Los reportes generados o enviados se guardarán automáticamente aquí.
                   </p>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="space-y-2.5">
                   {backups
                     .filter(b => {
                       const matchesSearch = !backupSearch || 
@@ -1720,112 +1688,116 @@ export const Settings: React.FC = () => {
                     })
                     .map((bk) => {
                       const isSuccess = bk.status === 'success';
+                      const isSaved = bk.status === 'saved';
+                      const isManual = bk.status === 'manual';
                       const formattedDate = bk.timestamp 
-                        ? format(new Date(bk.timestamp), 'dd/MM/yyyy - hh:mm:ss a')
+                        ? format(new Date(bk.timestamp), 'dd/MM/yyyy · hh:mm a')
                         : 'Fecha no registrada';
 
                       return (
                         <div
                           key={bk.id}
-                          className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3 ${
-                            isSuccess 
-                              ? 'bg-slate-50/50 border-slate-200/80 hover:border-slate-300' 
-                              : 'bg-rose-50/30 border-rose-200 hover:border-rose-300'
-                          }`}
+                          className="p-3 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-colors space-y-2"
                         >
-                          {/* Card Header */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className={`px-2.5 py-1 rounded-full text-[11px] font-extrabold flex items-center gap-1 ${
+                          {/* Card Top Row */}
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 ${
                                 isSuccess 
-                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' 
-                                  : 'bg-rose-100 text-rose-800 border border-rose-200'
+                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                  : isSaved
+                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
+                                    : isManual
+                                      ? 'bg-slate-100 text-slate-700 border border-slate-200'
+                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
                               }`}>
-                                {isSuccess ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
-                                {isSuccess ? 'Enviado con Éxito' : 'Fallido / No Enviado'}
+                                {isSuccess ? <CheckCircle2 size={11} /> : isSaved ? <Database size={11} /> : isManual ? <FileText size={11} /> : <AlertCircle size={11} />}
+                                {isSuccess 
+                                  ? 'Enviado a WhatsApp' 
+                                  : isSaved 
+                                    ? 'Respaldo (WhatsApp Off)' 
+                                    : isManual
+                                      ? 'Corte Manual'
+                                      : 'Falla de WhatsApp'}
                               </span>
 
                               <span className="text-slate-500 font-mono text-[11px]">
-                                🕒 {formattedDate}
+                                {formattedDate}
+                              </span>
+
+                              <span className="text-slate-400 text-[11px] hidden sm:inline">•</span>
+
+                              <span className="text-slate-500 text-[11px]">
+                                {bk.recipient}
                               </span>
                             </div>
 
-                            <div className="flex items-center gap-2 text-slate-500 text-[11px] font-medium">
-                              <span>Destino: <strong className="text-slate-800 font-mono">{bk.recipient}</strong></span>
-                              {bk.provider && (
-                                <span className="bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded text-[10px] uppercase font-bold">
-                                  {bk.provider}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                            {/* Small Action Buttons */}
+                            <div className="flex items-center gap-1.5 ml-auto">
+                              <button
+                                type="button"
+                                onClick={() => handleCopyBackup(bk)}
+                                className="h-6 px-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] transition-colors flex items-center gap-1"
+                                title="Copiar reporte al portapapeles"
+                              >
+                                {copiedId === bk.id ? (
+                                  <Check size={11} className="text-emerald-600" />
+                                ) : (
+                                  <Copy size={11} className="text-slate-500" />
+                                )}
+                                <span>{copiedId === bk.id ? 'Copiado' : 'Copiar'}</span>
+                              </button>
 
-                          {/* Error Message if any */}
-                          {bk.error && (
-                            <div className="p-2.5 rounded-xl bg-rose-100/70 border border-rose-200 text-rose-900 text-xs font-medium flex items-center gap-2">
-                              <AlertCircle size={14} className="shrink-0 text-rose-600" />
-                              <span>Detalle del error: <strong>{bk.error}</strong></span>
-                            </div>
-                          )}
-
-                          {/* Message Content Box */}
-                          <div className="bg-slate-900 text-emerald-400 p-3.5 rounded-xl font-mono text-xs overflow-x-auto custom-scrollbar border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto">
-                            {bk.message}
-                          </div>
-
-                          {/* Resend status notice */}
-                          {resendStatus && resendStatus.id === bk.id && (
-                            <div className={`p-2.5 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                              resendStatus.success ? 'bg-emerald-100 text-emerald-900 border border-emerald-300' : 'bg-rose-100 text-rose-900 border border-rose-300'
-                            }`}>
-                              {resendStatus.success ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
-                              <span>{resendStatus.message}</span>
-                            </div>
-                          )}
-
-                          {/* Card Footer Actions */}
-                          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                            <div className="flex items-center gap-2">
                               <button
                                 type="button"
                                 onClick={() => handleResendBackup(bk)}
                                 disabled={resendingId === bk.id}
-                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+                                className="h-6 px-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] transition-colors flex items-center gap-1 disabled:opacity-50"
+                                title="Reenviar este reporte a WhatsApp"
                               >
                                 {resendingId === bk.id ? (
-                                  <Loader2 size={13} className="animate-spin" />
+                                  <Loader2 size={11} className="animate-spin" />
                                 ) : (
-                                  <Send size={13} />
+                                  <Send size={11} />
                                 )}
-                                <span>Reenviar a WhatsApp</span>
+                                <span>Reenviar</span>
                               </button>
 
-                              <button
-                                type="button"
-                                onClick={() => handleCopyBackup(bk)}
-                                className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold text-xs transition-all flex items-center gap-1.5"
-                              >
-                                {copiedId === bk.id ? (
-                                  <Check size={13} className="text-emerald-600" />
-                                ) : (
-                                  <Copy size={13} className="text-slate-500" />
-                                )}
-                                <span>{copiedId === bk.id ? '¡Copiado!' : 'Copiar Texto'}</span>
-                              </button>
+                              {isAdmin && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteSingleBackup(bk.id)}
+                                  className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors flex items-center justify-center"
+                                  title="Eliminar registro"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
                             </div>
-
-                            {isAdmin && (
-                              <button
-                                type="button"
-                                onClick={() => handleDeleteSingleBackup(bk.id)}
-                                className="px-2.5 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 font-bold text-xs transition-all flex items-center gap-1"
-                                title="Eliminar este respaldo"
-                              >
-                                <Trash2 size={13} />
-                                <span>Eliminar</span>
-                              </button>
-                            )}
                           </div>
+
+                          {/* Error notice if present */}
+                          {bk.error && (
+                            <div className="px-2 py-1 rounded bg-rose-50 border border-rose-200/70 text-rose-700 text-[11px] font-medium flex items-center gap-1.5">
+                              <AlertCircle size={12} className="shrink-0 text-rose-600" />
+                              <span>{bk.error}</span>
+                            </div>
+                          )}
+
+                          {/* Monospace message preview */}
+                          <div className="bg-slate-900 text-slate-200 p-2.5 rounded-lg font-mono text-[11px] overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto select-all">
+                            {bk.message}
+                          </div>
+
+                          {/* Resend status toast/inline */}
+                          {resendStatus && resendStatus.id === bk.id && (
+                            <div className={`p-1.5 rounded-md text-[11px] font-medium flex items-center gap-1.5 ${
+                              resendStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+                            }`}>
+                              {resendStatus.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                              <span>{resendStatus.message}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1976,7 +1948,7 @@ export const Settings: React.FC = () => {
                   <div>
                     <h3 className="text-xs font-extrabold text-slate-900">Restablecer Historial y Tiempos de Operación</h3>
                     <p className="text-[11px] text-slate-500 mt-1 max-w-xl">
-                      Vacía todos los registros de encendido/apagado, fallas eléctricas y reinicia el contador de horas de funcionamiento de los equipos a cero.
+                      Vacía todos los registros de encendido/apagado, fallas eléctricas, apaga todos los equipos de la planta y reinicia el contador de horas de funcionamiento a cero.
                     </p>
                   </div>
 
@@ -2014,7 +1986,7 @@ export const Settings: React.FC = () => {
                         <div>
                           <h3 className="text-lg font-black text-slate-900 tracking-tight">¿Estás absolutamente seguro?</h3>
                           <p className="text-xs text-slate-600 font-medium mt-2 leading-relaxed">
-                            Esta acción eliminará de forma irreversible el historial de encendidos, apagados, fallas y reiniciará el tiempo operativo de todos los equipos a cero.
+                            Esta acción eliminará de forma irreversible el historial de encendidos, apagados, fallas eléctricas, <strong>apagará todos los equipos</strong> y reiniciará el tiempo operativo a cero.
                           </p>
                         </div>
 
@@ -2065,7 +2037,7 @@ export const Settings: React.FC = () => {
                     className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-2xl flex items-center gap-3 text-xs font-bold"
                   >
                     <CheckCircle2 className="text-emerald-600 shrink-0" size={18} />
-                    <span>¡Éxito! Todos los registros han sido borrados y los tiempos operativos se han reiniciado a cero.</span>
+                    <span>¡Éxito! Todos los registros han sido borrados, todos los equipos han sido apagados y los tiempos operativos se han reiniciado a cero.</span>
                   </motion.div>
                 )}
 

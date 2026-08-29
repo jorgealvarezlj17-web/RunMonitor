@@ -828,6 +828,7 @@ export const CorteReporte: React.FC = () => {
       setTimeout(() => setCopied(false), 3000);
 
       // Save current shift data to Firestore to persist manual edits
+      const manualBackupId = `bk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       await Promise.all([
         setDoc(doc(db, 'config', 'current_shift_observations'), {
           observations: observations,
@@ -841,7 +842,16 @@ export const CorteReporte: React.FC = () => {
           tanquesAireacion,
           tanquesMovimiento,
           lastUpdated: serverTimestamp()
-        }, { merge: true })
+        }, { merge: true }),
+        setDoc(doc(db, 'whatsapp_backups', manualBackupId), {
+          id: manualBackupId,
+          timestamp: new Date().toISOString(),
+          recipient: 'Generación Manual (Corte de Turno)',
+          message: finalReport,
+          status: 'manual',
+          error: null,
+          type: 'reporte_manual'
+        })
       ]);
 
       sounds.playSuccess();
@@ -936,65 +946,11 @@ export const CorteReporte: React.FC = () => {
             </div>
             <div>
               <h3 className="text-xl font-bold text-slate-900">Datos del Turno</h3>
-              <p className="text-xs text-slate-500 font-medium">Configura el rango y notas operativas</p>
+              <p className="text-xs text-slate-500 font-medium">Configura las notas operativas</p>
             </div>
           </div>
 
           <div className="space-y-6 flex-1">
-            {/* Visualización del Rango de Corte */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-4 shadow-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5">
-                  <CalendarRange size={15} className="text-cyan-600" />
-                  <span className="text-xs font-black text-slate-800 uppercase tracking-wider">Rango del Reporte</span>
-                </div>
-                <div className="flex items-center gap-1 bg-slate-200/70 p-0.5 rounded-lg text-[10px] font-bold">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      updateReportRange(startTime, endTime, 'scheduled');
-                    }}
-                    className={`px-2 py-0.5 rounded-md transition-all ${
-                      rangeMode === 'scheduled' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Programado
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sounds.playClick();
-                      updateReportRange(startTime, endTime, 'until_now');
-                    }}
-                    className={`px-2 py-0.5 rounded-md transition-all ${
-                      rangeMode === 'until_now' ? 'bg-white text-cyan-800 shadow-xs' : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                  >
-                    Hasta Ahora
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Inicio (Desde)</span>
-                  <span className="font-mono font-black text-sm text-slate-800">{to12h(startTime)}</span>
-                </div>
-                <div className="bg-white p-3 rounded-xl border border-slate-200/80">
-                  <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Cierre (Hasta)</span>
-                  <span className="font-mono font-black text-sm text-slate-800">
-                    {rangeMode === 'until_now' ? 'En vivo (Ahora)' : to12h(endTime)}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-[10px] text-slate-500 font-medium leading-tight">
-                {rangeMode === 'until_now' 
-                  ? 'El reporte abarcará desde la hora de inicio hasta el momento actual.'
-                  : 'El reporte abarcará exactamente el turno configurado. Para modificar estas horas, ve a la sección de Configuración.'}
-              </p>
-            </div>
 
             <div className="space-y-2">
               <div className="flex justify-between items-center px-1">

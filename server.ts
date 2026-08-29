@@ -101,7 +101,7 @@ async function startServer() {
   let memoryBackups: any[] = [];
 
   // Helper function to save backup record to Firestore with in-memory fallback
-  async function saveWhatsAppBackupRecord(message: string, recipient: string, status: 'success' | 'failed', errorStr?: string, providerStr?: string) {
+  async function saveWhatsAppBackupRecord(message: string, recipient: string, status: 'success' | 'failed' | 'saved' | string, errorStr?: string, providerStr?: string) {
     const backupId = `bk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const record = {
       id: backupId,
@@ -155,28 +155,50 @@ async function startServer() {
         formattedTo = formattedTo.replace('@c.us', '');
       }
 
-      try {
-        console.log(`Sending WhatsApp message via Render Baileys API to '${formattedTo}' at '${targetUrl}'...`);
-        const response = await axios.post(targetUrl, {
-          to: formattedTo,
-          message: message
-        }, {
-          headers: { 'Content-Type': 'application/json' },
-          timeout: 25000
-        });
+      // Attempt sending with retry for Render free-tier cold starts
+      const maxAttempts = 2;
+      let lastErrorMsg = 'Error al conectar con Render Baileys API';
 
-        console.log("Message successfully sent via Render Baileys API:", response.data);
-        await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
-        return { success: true, data: response.data };
-      } catch (error: any) {
-        const errMsg = error?.response?.data?.message || error?.response?.data?.error || error.message || 'Error al conectar con Render Baileys API';
-        console.error("Error sending message via Render Baileys API:", error?.response?.data || error.message);
-        await saveWhatsAppBackupRecord(message, formattedTo, 'failed', errMsg, provider);
-        return { 
-          success: false, 
-          error: errMsg 
-        };
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          console.log(`[Attempt ${attempt}/${maxAttempts}] Sending WhatsApp message via Render Baileys API to '${formattedTo}' at '${targetUrl}' (timeout: 60s)...`);
+          
+          const response = await axios.post(targetUrl, {
+            to: formattedTo,
+            message: message
+          }, {
+            headers: { 'Content-Type': 'application/json' },
+            timeout: 60000 // 60s timeout to allow Render service cold boot
+          });
+
+          console.log("Message successfully sent via Render Baileys API:", response.data);
+          await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
+          return { success: true, data: response.data };
+        } catch (error: any) {
+          const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
+          const isNetworkOr5xx = error.response?.status >= 500 || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET';
+          
+          lastErrorMsg = error?.response?.data?.message || error?.response?.data?.error || (
+            isTimeout 
+              ? 'Tiempo de espera excedido al contactar el servidor de WhatsApp en Render (iniciando servicio).'
+              : error.message || 'Error al conectar con Render Baileys API'
+          );
+
+          console.warn(`[Attempt ${attempt}/${maxAttempts}] Render Baileys API issue:`, lastErrorMsg);
+
+          if (attempt < maxAttempts && (isTimeout || isNetworkOr5xx)) {
+            console.log(`Waiting 3 seconds before retrying Render Baileys API (waking up container)...`);
+            await new Promise(r => setTimeout(r, 3000));
+          }
+        }
       }
+
+      console.warn("[WhatsApp Service] No fue posible contactar el servidor de Render Baileys tras varios intentos. El mensaje ha quedado preservado en la base de datos de respaldo.");
+      await saveWhatsAppBackupRecord(message, formattedTo, 'failed', lastErrorMsg, provider);
+      return { 
+        success: false, 
+        error: lastErrorMsg 
+      };
     }
 
     // 2. Green API
@@ -209,7 +231,7 @@ async function startServer() {
           message: message
         }, {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 15000
+          timeout: 30000
         });
         console.log("Message successfully sent via Green API:", response.data);
         await saveWhatsAppBackupRecord(message, formattedChatId, 'success', undefined, 'greenapi');
@@ -248,7 +270,7 @@ async function startServer() {
         body: message
       }, {
         headers,
-        timeout: 20000
+        timeout: 30000
       });
       console.log("Message successfully sent via WhatsApp API:", response.data);
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);

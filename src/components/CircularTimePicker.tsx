@@ -138,17 +138,19 @@ export const CircularTimePicker: React.FC<CircularTimePickerProps> = ({ initialT
           <div className="absolute w-2 h-2 bg-emerald-500 rounded-full z-20" />
           
           {/* Hand */}
-          <motion.div 
-            className="absolute bottom-1/2 left-1/2 w-1 bg-emerald-500 origin-bottom z-10"
+          <div 
+            className={`absolute bottom-1/2 left-1/2 w-1 bg-emerald-500 origin-bottom z-10 ${
+              isDragging ? 'transition-none' : 'transition-transform duration-100 ease-out'
+            }`}
             style={{ 
               height: '40%',
-              rotate: mode === 'hours' ? (hours * 30) : (minutes * 6)
+              transform: `translateX(-50%) rotate(${mode === 'hours' ? (hours * 30) : (minutes * 6)}deg)`
             }}
           >
             <div className="absolute -top-4 left-1/2 -translate-x-1/2 w-8 h-8 bg-emerald-500 rounded-full shadow-lg shadow-emerald-500/40 flex items-center justify-center">
                <div className="w-1.5 h-1.5 bg-white rounded-full" />
             </div>
-          </motion.div>
+          </div>
 
           {/* Numbers */}
           {mode === 'hours' ? (
