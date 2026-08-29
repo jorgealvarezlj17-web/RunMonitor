@@ -512,33 +512,20 @@ export function AutoReportGenerator() {
       if (autoSendEnabled) {
         recipientName = 'Grupo WhatsApp (Automático)';
         try {
-          const response = await fetch('/api/send-whatsapp', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: finalReport })
-          });
+          const { sendWhatsAppMessageDirect } = await import('../whatsapp');
+          const configDoc = await getDoc(doc(db, 'config', 'whatsapp'));
+          const whatsappConfig = configDoc.exists() ? configDoc.data() as any : {};
+          
+          const response = await sendWhatsAppMessageDirect(
+            finalReport,
+            whatsappConfig
+          );
 
-          if (response.ok) {
-            try {
-              const data = await response.json();
-              if (data.success) {
-                backupStatus = 'success';
-              } else {
-                backupStatus = 'failed';
-                errorMsg = data.error || 'Error al enviar a WhatsApp';
-              }
-            } catch (parseError) {
-              backupStatus = 'failed';
-              errorMsg = `Respuesta no válida (posible falta de backend en Vercel). Estado: ${response.status}`;
-            }
+          if (response.success) {
+            backupStatus = 'success';
           } else {
             backupStatus = 'failed';
-            try {
-              const errData = await response.json();
-              errorMsg = errData.error || `Error HTTP ${response.status} de WhatsApp`;
-            } catch (_) {
-              errorMsg = `Error HTTP ${response.status} de WhatsApp`;
-            }
+            errorMsg = response.error || 'Error al enviar a WhatsApp';
           }
         } catch (netErr: any) {
           backupStatus = 'failed';

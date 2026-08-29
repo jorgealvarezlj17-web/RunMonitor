@@ -31,6 +31,7 @@ import {
   History,
   Filter
 } from 'lucide-react';
+import { sendWhatsAppMessageDirect } from '../whatsapp';
 import { TimePickerModal } from './TimePickerModal';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { useProfile } from '../context/ProfileContext';
@@ -44,6 +45,8 @@ import {
   setDoc, 
   orderBy, 
   getDocs, 
+  getDoc,
+  limit,
   writeBatch, 
   Timestamp 
 } from 'firebase/firestore';
@@ -275,22 +278,24 @@ export const Settings: React.FC = () => {
   const fetchBackups = async () => {
     setIsLoadingBackups(true);
     try {
-      const res = await fetch('/api/whatsapp-backups');
-      const data = await res.json();
-      if (data.success && Array.isArray(data.backups)) {
-        setBackups(data.backups.filter((b: any) => b.id !== 'staged_upcoming_report'));
-        const staged = data.backups.find((b: any) => b.id === 'staged_upcoming_report');
-        if (staged) {
-          setStagedBackup({
-            id: staged.id,
-            timestamp: staged.timestamp || new Date().toISOString(),
-            recipient: staged.recipient || 'Grupo WhatsApp (Programado)',
-            message: staged.message || '',
-            status: 'scheduled',
-            error: null,
-            provider: ''
-          });
-        }
+      const backupsRef = collection(db, 'whatsapp_backups');
+      const q = query(backupsRef, orderBy('timestamp', 'desc'), limit(150));
+      const snapshot = await getDocs(q);
+      const fetchedBackups: any[] = [];
+      snapshot.forEach(doc => fetchedBackups.push(doc.data()));
+      
+      setBackups(fetchedBackups.filter((b: any) => b.id !== 'staged_upcoming_report'));
+      const staged = fetchedBackups.find((b: any) => b.id === 'staged_upcoming_report');
+      if (staged) {
+        setStagedBackup({
+          id: staged.id,
+          timestamp: staged.timestamp || new Date().toISOString(),
+          recipient: staged.recipient || 'Grupo WhatsApp (Programado)',
+          message: staged.message || '',
+          status: 'scheduled',
+          error: null,
+          provider: ''
+        });
       }
     } catch (err) {
       console.error("Error fetching backups:", err);
@@ -350,13 +355,12 @@ export const Settings: React.FC = () => {
     setResendingId('staged_upcoming_report');
     setResendStatus(null);
     try {
-      const res = await fetch('/api/send-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: stagedBackup.message })
-      });
-      const data = await res.json();
-      if (res.ok) {
+      const response = await sendWhatsAppMessageDirect(
+        stagedBackup.message,
+        config,
+        stagedBackup.recipient
+      );
+      if (response.success) {
         sounds.playSuccess();
         setResendStatus({ id: 'staged_upcoming_report', success: true, message: '¡Reporte pre-generado enviado exitosamente a WhatsApp!' });
         if (db) {
@@ -364,7 +368,7 @@ export const Settings: React.FC = () => {
           await setDoc(doc(db, 'whatsapp_backups', backupId), {
             id: backupId,
             timestamp: new Date().toISOString(),
-            recipient: 'Grupo WhatsApp (Manual)',
+            recipient: stagedBackup.recipient,
             message: stagedBackup.message,
             status: 'success',
             type: 'manual'
@@ -372,7 +376,7 @@ export const Settings: React.FC = () => {
         }
       } else {
         sounds.playError();
-        setResendStatus({ id: 'staged_upcoming_report', success: false, message: data.error || 'Error al enviar a WhatsApp' });
+        setResendStatus({ id: 'staged_upcoming_report', success: false, message: response.error || 'Error al enviar a WhatsApp' });
       }
     } catch (err: any) {
       sounds.playError();
@@ -387,18 +391,13 @@ export const Settings: React.FC = () => {
     setResendingId(backup.id);
     setResendStatus(null);
     try {
-      const res = await fetch('/api/whatsapp-backups/resend', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: backup.message, recipient: backup.recipient })
-      });
-      const data = await res.json();
-      if (data.success) {
+      const response = await sendWhatsAppMessageDirect(backup.message, config, backup.recipient);
+      if (response.success) {
         sounds.playSuccess();
         setResendStatus({ id: backup.id, success: true, message: '¡Mensaje reenviado exitosamente a WhatsApp!' });
       } else {
         sounds.playError();
-        setResendStatus({ id: backup.id, success: false, message: data.error || 'Error al reenviar mensaje.' });
+        setResendStatus({ id: backup.id, success: false, message: response.error || 'Error al reenviar mensaje.' });
       }
     } catch (err: any) {
       sounds.playError();
@@ -420,8 +419,6 @@ export const Settings: React.FC = () => {
     try {
       if (db) {
         await deleteDoc(doc(db, 'whatsapp_backups', id));
-      } else {
-        await fetch(`/api/whatsapp-backups/${id}`, { method: 'DELETE' });
       }
       setBackups(prev => prev.filter(b => b.id !== id));
     } catch (err) {
@@ -433,7 +430,11 @@ export const Settings: React.FC = () => {
     sounds.playClick();
     setIsClearingBackups(true);
     try {
-      await fetch('/api/whatsapp-backups', { method: 'DELETE' });
+      const backupsRef = collection(db, 'whatsapp_backups');
+      const snapshot = await getDocs(backupsRef);
+      const batchPromises = snapshot.docs.map(document => deleteDoc(doc(db, 'whatsapp_backups', document.id)));
+      await Promise.all(batchPromises);
+      
       setBackups([]);
       setShowClearConfirm(false);
     } catch (err) {
@@ -448,22 +449,18 @@ export const Settings: React.FC = () => {
     setIsLoadingGroups(true);
     setGroupLoadError(null);
     try {
-      const response = await fetch('/api/green-api/get-chats', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          greenApiInstanceId: config.greenApiInstanceId,
-          greenApiToken: config.greenApiToken
-        })
+      const url = `https://api.green-api.com/waInstance${config.greenApiInstanceId}/getContacts/${config.greenApiToken}`;
+      const response = await fetch(url, {
+        method: 'GET'
       });
       let data;
       try {
         data = await response.json();
       } catch (parseError) {
-        throw new Error(`El servidor devolvió un formato inválido (HTML/404). Si estás en Vercel, el backend de WhatsApp no se ejecuta en estático. Código HTTP: ${response.status}`);
+        throw new Error(`El servidor devolvió un formato inválido. Código HTTP: ${response.status}`);
       }
-      if (response.ok && data.success) {
-        const groups = (data.chats || []).filter((c: any) => c.isGroup);
+      if (response.ok) {
+        const groups = (Array.isArray(data) ? data : []).filter((c: any) => c.type === 'group' || c.isGroup || (c.id && c.id.includes('@g.us')));
         setAvailableGroups(groups);
         if (groups.length === 0) {
           setGroupLoadError('No se encontraron grupos asociados a esta cuenta de WhatsApp.');
@@ -483,31 +480,16 @@ export const Settings: React.FC = () => {
     setIsTestingWhatsApp(true);
     setTestStatus({ type: 'idle' });
     try {
-      const response = await fetch('/api/test-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: config.whatsappProvider || 'greenapi',
-          greenApiInstanceId: config.greenApiInstanceId,
-          greenApiToken: config.greenApiToken,
-          greenApiChatId: config.greenApiChatId,
-          whatsappApiUrl: config.whatsappApiUrl,
-          whatsappToken: config.whatsappToken,
-          whatsappGroupId: config.whatsappGroupId
-        })
-      });
+      const response = await sendWhatsAppMessageDirect(
+        '🧪 *Ping desde AI Studio / Vercel* verificando sesión de WhatsApp',
+        config
+      );
 
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        throw new Error(`Respuesta no-JSON del servidor (HTML/404). En Vercel el backend no responde a /api/test-whatsapp. Código: ${response.status}`);
-      }
-      if (response.ok && data.success) {
+      if (response.success) {
         sounds.playSuccess();
         setTestStatus({ type: 'success', message: '¡Mensaje de prueba enviado con éxito a tu WhatsApp!' });
       } else {
-        setTestStatus({ type: 'error', message: data.error || 'No se pudo enviar el mensaje. Verifica las credenciales.' });
+        setTestStatus({ type: 'error', message: response.error || 'No se pudo enviar el mensaje. Verifica las credenciales.' });
       }
     } catch (error: any) {
       setTestStatus({ type: 'error', message: error.message || 'Error de red al probar conexión' });

@@ -882,25 +882,21 @@ export const CorteReporte: React.FC = () => {
     setSendWhatsAppStatus({ type: 'idle' });
 
     try {
-      const response = await fetch('/api/send-whatsapp', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: textToSend })
-      });
-
-      let data;
-      try {
-        data = await response.json();
-      } catch (parseError) {
-        throw new Error(`El servidor devolvió un error (HTML/404). En Vercel, el backend de mensajería no está disponible por defecto. Código: ${response.status}`);
-      }
+      const { sendWhatsAppMessageDirect } = await import('../whatsapp');
+      const configDoc = await getDoc(doc(db, 'config', 'whatsapp'));
+      const whatsappConfig = configDoc.exists() ? configDoc.data() as any : {};
       
-      if (response.ok && data.success) {
+      const response = await sendWhatsAppMessageDirect(
+        textToSend,
+        whatsappConfig
+      );
+      
+      if (response.success) {
         setSendWhatsAppStatus({ type: 'success', message: '¡Reporte enviado exitosamente a WhatsApp!' });
       } else {
         setSendWhatsAppStatus({ 
           type: 'error', 
-          message: data.error || 'No se pudo enviar el reporte. Verifica la configuración en la pestaña Configuración.' 
+          message: response.error || 'No se pudo enviar el reporte. Verifica la configuración en la pestaña Configuración.' 
         });
       }
     } catch (err: any) {
@@ -913,7 +909,7 @@ export const CorteReporte: React.FC = () => {
       setIsSendingWhatsApp(false);
       setTimeout(() => {
         setSendWhatsAppStatus(prev => prev.type === 'success' ? { type: 'idle' } : prev);
-      }, 7000);
+      }, 5000);
     }
   };
 
