@@ -450,8 +450,13 @@ export const Settings: React.FC = () => {
     setGroupLoadError(null);
     try {
       const url = `https://api.green-api.com/waInstance${config.greenApiInstanceId}/getContacts/${config.greenApiToken}`;
-      const response = await fetch(url, {
-        method: 'GET'
+      const response = await fetch('/api/relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUrl: url,
+          proxyMethod: 'GET'
+        })
       });
       let data;
       try {

@@ -290,6 +290,40 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.post("/api/relay", express.json(), async (req, res) => {
+    try {
+      const { targetUrl, proxyMethod = 'POST', payload, headers } = req.body;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      const fetchOptions: any = {
+        method: proxyMethod,
+        headers: headers || { 'Content-Type': 'application/json' },
+        signal: controller.signal
+      };
+
+      if (proxyMethod !== 'GET' && proxyMethod !== 'HEAD' && payload) {
+        fetchOptions.body = JSON.stringify(payload);
+      }
+
+      const response = await fetch(targetUrl, fetchOptions);
+      clearTimeout(timeoutId);
+
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { error: 'Invalid response from target server', text: text.substring(0, 200) };
+      }
+      return res.status(response.status).json(data);
+    } catch (error: any) {
+      console.error("Proxy error:", error);
+      return res.status(500).json({ error: error.message || 'Server timeout or network error' });
+    }
+  });
+
   // Reload configuration and cron job
   app.post("/api/admin/reload-config", async (req, res) => {
     

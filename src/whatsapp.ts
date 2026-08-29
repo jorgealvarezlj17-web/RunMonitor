@@ -38,13 +38,16 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
     formattedTo = formattedTo.replace('@c.us', '');
     
     try {
-      const response = await fetch(targetUrl, {
+      const response = await fetch('/api/relay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ to: formattedTo, message })
+        body: JSON.stringify({
+          targetUrl,
+          payload: { to: formattedTo, message }
+        })
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(data.message || data.error || 'Error al conectar con Render Baileys API');
+      if (!response.ok || data.error) throw new Error(data.message || data.error || 'Error al conectar con Render Baileys API a través del proxy');
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
@@ -60,13 +63,16 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
     }
     const url = `https://api.green-api.com/waInstance${config.greenApiInstanceId}/sendMessage/${config.greenApiToken}`;
     try {
-      const response = await fetch(url, {
+      const response = await fetch('/api/relay', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: formattedTo, message })
+        body: JSON.stringify({
+          targetUrl: url,
+          payload: { chatId: formattedTo, message }
+        })
       });
       const data = await response.json();
-      if (!response.ok) throw new Error('Error de Green API');
+      if (!response.ok || data.error) throw new Error(data.error || 'Error de Green API a través del proxy');
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
