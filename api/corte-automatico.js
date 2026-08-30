@@ -246,6 +246,28 @@ export default async function handler(req, res) {
     };
     await setDoc(doc(db, 'whatsapp_backups', backupId), backupData);
 
+    // 7.5 Crear notificación en la app para alertar al usuario
+    try {
+      const notifId = `notif_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const notifTitle = sendSuccess 
+         ? '✅ Reporte en la Nube Enviado' 
+         : '⚠️ Fallo en Vercel Cron (WhatsApp)';
+         
+      const notifMessage = sendSuccess 
+         ? `El reporte automático (${shiftKey}) se envió exitosamente a WhatsApp desde el servidor de Vercel.`
+         : `Fallo al enviar reporte desde la nube. Razón: ${errorMsg || 'Servidor WhatsApp desconectado'}. Revisa que Render no esté dormido o verifica la conexión de tu bot.`;
+         
+      await setDoc(doc(db, 'notifications', notifId), {
+        title: notifTitle,
+        message: notifMessage,
+        type: sendSuccess ? 'success' : 'error',
+        timestamp: new Date(),
+        read: false
+      });
+    } catch (notifErr) {
+      console.error("Error guardando notificacion:", notifErr);
+    }
+
     // 8. Update shiftKey if success
     if (sendSuccess) {
       await setDoc(settingsRef, { lastAutoSentShiftKey: shiftKey }, { merge: true });
