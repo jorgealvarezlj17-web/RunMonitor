@@ -1,0 +1,101 @@
+64:  const buildCurrentReportText = async (targetShiftEnd: Date): Promise<string> => {
+65-    const now = new Date();
+66-    let start: Date;
+67-    let end: Date = targetShiftEnd;
+68-
+69-    const [startH, startM] = startTime.split(':').map(Number);
+70-    const [endH, endM] = endTime.split(':').map(Number);
+71-
+72-    start = new Date(end);
+73-    if (startH === endH && startM === endM) {
+74-      start.setDate(end.getDate() - 1);
+75-      start.setHours(startH, startM, 0, 0);
+76-    } else if (startH > endH || (startH === endH && startM > endM)) {
+77-      start.setDate(end.getDate() - 1);
+78-      start.setHours(startH, startM, 0, 0);
+79-    } else {
+80-      start.setHours(startH, startM, 0, 0);
+81-    }
+82-
+83-    // Fetch categories
+84-    const catSnap = await getDocs(collection(db, 'categories'));
+85-    const categories: Record<string, string> = {};
+86-    catSnap.forEach(docSnap => {
+87-      categories[docSnap.id] = docSnap.data().name;
+88-    });
+89-
+90-    // Fetch equipment
+91-    const equipSnap = await getDocs(collection(db, 'equipment'));
+92-    const equipments: any[] = [];
+93-    equipSnap.forEach(docSnap => {
+94-      equipments.push({ id: docSnap.id, ...docSnap.data() });
+95-    });
+96-
+97-    // Fetch all logs once (avoids composite index errors)
+98-    const allLogsSnap = await getDocs(collection(db, 'logs'));
+99-    const allLogs: any[] = [];
+100-    allLogsSnap.forEach(docSnap => {
+101-      allLogs.push({ id: docSnap.id, ...docSnap.data() });
+102-    });
+103-
+104-    // Filter logs in shift range
+105-    const logs = allLogs.filter(l => {
+106-      const d = safeToDate(l.timestamp);
+107-      return d >= start && d <= end;
+108-    });
+109-    logs.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
+110-
+111-    // Fetch all power events once
+112-    const allPowerSnap = await getDocs(collection(db, 'power_events'));
+113-    const allPower: any[] = [];
+114-    allPowerSnap.forEach(docSnap => {
+115-      allPower.push({ id: docSnap.id, ...docSnap.data() });
+116-    });
+117-
+118-    const powerEvents = allPower.filter(p => {
+119-      const d = safeToDate(p.timestamp);
+120-      return d >= start && d <= end;
+121-    });
+122-    powerEvents.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
+123-
+124-    const priorPower = allPower.filter(p => safeToDate(p.timestamp) < start);
+125-    priorPower.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+126-    let initialPowerState: any = priorPower.length > 0 ? priorPower[0] : null;
+127-
+128-    // Determine arrival status for each equipment prior to shift
+129-    const arrivalStatuses: Record<string, string> = {};
+130-    equipments.forEach((eq) => {
+131-      const priorLogs = allLogs.filter(l => l.equipmentId === eq.id && safeToDate(l.timestamp) < start);
+132-      priorLogs.sort((a, b) => safeToDate(b.timestamp).getTime() - safeToDate(a.timestamp).getTime());
+133-      let foundStatus: string | null = null;
+134-      for (const d of priorLogs) {
+135-        if (d.action === 'on' || d.action === 'off') {
+136-          foundStatus = d.action;
+137-          break;
+138-        }
+139-      }
+140-      if (!foundStatus) {
+141-        foundStatus = eq.status === 'on' ? 'on' : 'off';
+142-      }
+143-      arrivalStatuses[eq.id] = foundStatus;
+144-    });
+145-
+146-    // Group equipments
+147-    const groupedEquipments: Record<string, any[]> = {};
+148-    equipments.forEach(eq => {
+149-      const catId = eq.categoryId || 'uncategorized';
+150-      if (!groupedEquipments[catId]) groupedEquipments[catId] = [];
+151-      groupedEquipments[catId].push(eq);
+152-    });
+153-
+154-    // Format report
+155-    const startStr = `${format(start, "dd/MM/yy")} (${format(start, "h:mma")})`;
+156-    const endStr = `${format(end, "dd/MM/yy")} (${format(end, "h:mma")})`;
+157-
+158-    const currentOp = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || 'Operador Automático';
+159-
+160-    let text = `👤 OP. EN TURNO: ${currentOp}\n`;
+161-    text += `📅 Ciclo Operativo: ${startStr} — ${endStr}\n`;
+162-    text += `━━━━━━━━━━━━━━━━━━━━\n`;
+163-
+164-    // Power events

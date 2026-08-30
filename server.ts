@@ -16,9 +16,6 @@ dotenv.config();
 // Ensure all Date evaluations are in local time
 process.env.TZ = 'America/Caracas';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 async function startServer() {
   const app = express();
   const PORT = 3000;
@@ -43,7 +40,7 @@ async function startServer() {
 
   // Initialize Firebase Admin for backend
   try {
-    const configPath = path.join(__dirname, 'firebase-applet-config.json');
+    const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
     let databaseId: string | undefined = undefined;
     let projectId: string | undefined = process.env.GOOGLE_CLOUD_PROJECT;
 
@@ -543,7 +540,7 @@ async function startServer() {
       console.error("Error creating Vite server:", e);
     }
   } else {
-    const distPath = path.join(__dirname, 'dist');
+    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
