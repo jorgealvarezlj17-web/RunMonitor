@@ -5,6 +5,11 @@ import { format } from 'date-fns';
 import firebaseConfig from '../firebase-applet-config.json' with { type: 'json' };
 
 export default async function handler(req, res) {
+  // Evitar que Vercel y el navegador cacheen esta respuesta (CRÍTICO para cron-job)
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   try {
     // 1. Validate security token
     const token = req.query.token || req.headers.authorization;
@@ -25,6 +30,16 @@ export default async function handler(req, res) {
     await signInWithEmailAndPassword(auth, 'cron@runmonitor.app', 'SecureCronPassword123!');
     
     const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+    // Guardar log temporal para probar si cron-job.org realmente está visitando
+    try {
+        await setDoc(doc(db, 'logs', `ping_${Date.now()}`), {
+           description: `CRON-JOB PING RECIBIDO - Token válido`,
+           timestamp: new Date(),
+           equipmentId: 'cron_test',
+           type: 'ping'
+        });
+    } catch (e) {}
 
     // 3. Read App Settings
     const settingsRef = doc(db, 'config', 'app_settings');
@@ -195,6 +210,14 @@ export default async function handler(req, res) {
     let errorMsg = null;
     let resultData = null;
 
+    // Utilidad para evitar que Vercel cancele el script a los 10 segundos
+    const fetchWithTimeout = (url, options, timeout = 7000) => {
+      return Promise.race([
+        fetch(url, options),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: El bot de WhatsApp tardó demasiado en responder')), timeout))
+      ]);
+    };
+
     try {
       const wpConfigDoc = await getDoc(doc(db, 'config', 'whatsapp'));
       const wpConfig = wpConfigDoc.exists() ? wpConfigDoc.data() : {};
@@ -207,7 +230,7 @@ export default async function handler(req, res) {
       } else {
           if (provider === 'green_api') {
               const url = `https://api.green-api.com/waInstance${wpConfig.greenApiInstanceId}/sendMessage/${wpConfig.greenApiToken}`;
-              const resp = await fetch(url, {
+              const resp = await fetchWithTimeout(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ chatId: formattedTo, message: reportText })
@@ -218,7 +241,7 @@ export default async function handler(req, res) {
           } else {
               const url = wpConfig.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message';
               formattedTo = formattedTo.replace('@g.us', '').replace('@c.us', '');
-              const resp = await fetch(url, {
+              const resp = await fetchWithTimeout(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ to: formattedTo, message: reportText })
