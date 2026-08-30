@@ -1,0 +1,24 @@
+name: RunMonitor Vigilante Nativo
+
+on:
+  schedule:
+    # Se ejecuta cada 5 minutos automáticamente
+    - cron: '*/5 * * * *'
+  workflow_dispatch: # Botón para poder probarlo manualmente si queremos
+
+jobs:
+  vigilar-y-mantener-despierto:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: ⏰ Revisar Hora de Corte (Vercel)
+        run: |
+          echo "Consultando a Vercel para ver si es hora de enviar el reporte..."
+          curl -s "https://runmonitor-app.vercel.app/api/corte-automatico?token=runmonitor-secure-tick"
+          echo ""
+          
+      - name: ☕ Darle Café al Bot de WhatsApp (Render)
+        run: |
+          echo "Haciendo ping a Render para que la sesión de WhatsApp no hiberne..."
+          curl -s "https://bot-whatsapp-baileys-jpyb.onrender.com"
+          echo ""
