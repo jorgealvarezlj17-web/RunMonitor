@@ -200,7 +200,7 @@ export default async function handler(req, res) {
       const wpConfig = wpConfigDoc.exists() ? wpConfigDoc.data() : {};
       
       const provider = wpConfig.whatsappProvider || 'render_baileys';
-      let formattedTo = wpConfig.whatsappGroupId || wpConfig.greenApiChatId || '';
+      let formattedTo = wpConfig.whatsappGroupId || wpConfig.greenApiChatId || '120363427690312638@g.us';
       
       if (!formattedTo) {
          errorMsg = 'No se ha configurado un ID de grupo destino';
