@@ -1,4 +1,5 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, getDoc, setDoc, getDocs, collection } from 'firebase/firestore';
 import { format } from 'date-fns';
 import firebaseConfig from '../firebase-applet-config.json' with { type: 'json' };
@@ -18,6 +19,10 @@ export default async function handler(req, res) {
     } else {
       app = getApp();
     }
+    
+    // Autenticar al bot para poder leer la base de datos
+    const auth = getAuth(app);
+    await signInWithEmailAndPassword(auth, 'cron@runmonitor.app', 'SecureCronPassword123!');
     
     const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
