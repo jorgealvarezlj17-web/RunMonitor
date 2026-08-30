@@ -11,14 +11,14 @@ const auth = getAuth(app);
 async function run() {
   await signInWithEmailAndPassword(auth, 'cron@runmonitor.app', 'SecureCronPassword123!');
   
-  console.log("=== RECENT PINGS ===");
-  const q2 = query(collection(db, 'logs'), where('type', '==', 'ping'), orderBy('timestamp', 'desc'), limit(15));
-  const snap2 = await getDocs(q2);
-  snap2.forEach(d => {
+  console.log("=== LATEST WHATSAPP BACKUPS ===");
+  const q1 = query(collection(db, 'whatsapp_backups'), orderBy('timestamp', 'desc'), limit(5));
+  const snap1 = await getDocs(q1);
+  snap1.forEach(d => {
     const data = d.data();
-    console.log(`[${data.timestamp ? (data.timestamp.toDate ? data.timestamp.toDate().toISOString() : data.timestamp) : 'N/A'}] ${data.description}`);
+    console.log(`[${data.timestamp}] ${data.recipient} | ShiftKey: ${data.shiftKey} | Status: ${data.status}`);
   });
-
+  
   process.exit(0);
 }
 run();

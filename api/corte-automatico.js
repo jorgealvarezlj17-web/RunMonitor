@@ -211,7 +211,7 @@ export default async function handler(req, res) {
     let resultData = null;
 
     // Utilidad para evitar que Vercel cancele el script a los 10 segundos
-    const fetchWithTimeout = (url, options, timeout = 7000) => {
+    const fetchWithTimeout = (url, options, timeout = 4000) => {
       return Promise.race([
         fetch(url, options),
         new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: El bot de WhatsApp tardó demasiado en responder')), timeout))
