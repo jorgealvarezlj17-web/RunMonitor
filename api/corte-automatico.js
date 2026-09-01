@@ -91,7 +91,6 @@ export default async function handler(req, res) {
     // 5. Generate Report Text
     let startLocal = new Date(targetShiftEnd);
     const [startH, startM] = (startTime || '06:00').split(':').map(Number);
-    
     if (startH === endH && startM === endM) {
       startLocal.setUTCDate(targetShiftEnd.getUTCDate() - 1);
       startLocal.setUTCHours(startH, startM, 0, 0);
@@ -102,183 +101,78 @@ export default async function handler(req, res) {
       startLocal.setUTCHours(startH, startM, 0, 0);
     }
 
-    // Safe date parsing helper
-    const safeToDate = (ts) => {
-      if (!ts) return new Date();
-      if (ts instanceof Date) return ts;
-      if (typeof ts.toDate === 'function') return ts.toDate();
-      if (typeof ts.seconds === 'number') return new Date(ts.seconds * 1000);
-      if (typeof ts === 'string') return new Date(ts);
-      return new Date();
-    };
-
-    // Fetch collections
-    const catSnap = await getDocs(collection(db, 'categories'));
-    const categories = {};
-    catSnap.forEach(d => { categories[d.id] = d.data().name; });
-
-    const equipSnap = await getDocs(collection(db, 'equipment'));
-    const equipments = [];
-    equipSnap.forEach(d => { equipments.push({ id: d.id, ...d.data() }); });
-
-    const allLogsSnap = await getDocs(collection(db, 'logs'));
-    const logs = [];
-    allLogsSnap.forEach(d => {
-      const data = d.data();
-      const dt = safeToDate(data.timestamp);
-      const tzOffset = -4 * 3600 * 1000;
-      const dtLocal = new Date(dt.getTime() + tzOffset);
-      
-      if (dtLocal >= startLocal && dtLocal <= targetShiftEnd) {
-        logs.push({ id: d.id, ...data });
-      }
-    });
-    logs.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
-
-    const allPowerSnap = await getDocs(collection(db, 'power_events'));
-    const powerEvents = [];
-    allPowerSnap.forEach(d => {
-      const data = d.data();
-      const dtLocal = new Date(safeToDate(data.timestamp).getTime() - 4 * 3600 * 1000);
-      if (dtLocal >= startLocal && dtLocal <= targetShiftEnd) {
-        powerEvents.push({ id: d.id, ...data });
-      }
-    });
-    powerEvents.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
-
-    const obsSnap = await getDoc(doc(db, 'config', 'current_shift_observations'));
-    const maintSnap = await getDoc(doc(db, 'config', 'current_shift_maintenance'));
-    const observationsText = obsSnap.exists() ? obsSnap.data().text || '' : '';
-    const maintText = maintSnap.exists() ? maintSnap.data().text || '' : '';
-
-    // Build the text
-    let reportText = `*REPORTE OPERATIVO PROGRAMADO*\n`;
-    reportText += `*FECHA:* ${format(targetShiftEnd, 'dd/MM/yyyy')}\n`;
-    reportText += `*TURNO:* ${startH.toString().padStart(2, '0')}:${startM.toString().padStart(2, '0')} a ${endH.toString().padStart(2, '0')}:${endM.toString().padStart(2, '0')}\n\n`;
-
-    // Equipments
-    reportText += `*ESTADO DE EQUIPOS:*\n`;
-    const catGroups = {};
-    equipments.forEach(eq => {
-      const c = eq.categoryId || 'sin_categoria';
-      if (!catGroups[c]) catGroups[c] = [];
-      catGroups[c].push(eq);
-    });
-    for (const catId of Object.keys(catGroups)) {
-      const catName = categories[catId] || catId;
-      reportText += `\n*${catName}*\n`;
-      catGroups[catId].forEach(eq => {
-        let stIcon = '✅';
-        if (eq.status === 'warning') stIcon = '⚠️';
-        if (eq.status === 'offline') stIcon = '❌';
-        reportText += `${stIcon} ${eq.name}: ${eq.status === 'online' ? 'Operativo' : eq.status === 'warning' ? 'Precaución' : 'Fuera de Servicio'}\n`;
-      });
-    }
-
-    reportText += `\n*NOVEDADES DEL TURNO:*\n`;
-    if (logs.length === 0 && powerEvents.length === 0) {
-      reportText += `Sin novedades reportadas en el periodo.\n`;
+    let reportText = '';
+    const stagedSnap = await getDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
+    if (stagedSnap.exists() && stagedSnap.data().message) {
+      reportText = stagedSnap.data().message;
+      console.log('Se uso el reporte pre-generado staged_upcoming_report');
     } else {
-      if (powerEvents.length > 0) {
-        reportText += `\n⚡ Eventos Eléctricos:\n`;
-        powerEvents.forEach(pe => {
-          const dtLocal = new Date(safeToDate(pe.timestamp).getTime() - 4 * 3600 * 1000);
-          reportText += `- ${format(dtLocal, 'HH:mm')} | ${pe.type === 'corte' ? 'CORTE DE ENERGÍA' : 'RESTABLECIMIENTO'} | Planta: ${pe.plantStatus === 'encendida' ? 'Encendida' : 'Apagada'}\n`;
-        });
-      }
-      if (logs.length > 0) {
-        reportText += `\n📋 Registros:\n`;
-        logs.forEach(log => {
-          const dtLocal = new Date(safeToDate(log.timestamp).getTime() - 4 * 3600 * 1000);
-          let eqName = log.equipmentId;
-          const eq = equipments.find(e => e.id === log.equipmentId);
-          if (eq) eqName = eq.name;
-          reportText += `- ${format(dtLocal, 'HH:mm')} | ${eqName} | ${log.description}\n`;
-        });
-      }
+       console.log('No se encontro staged. Construyendo de emergencia...');
+       reportText = "*REPORTE DE EMERGENCIA*\nNo se pudo leer el reporte pre-generado. Hubo un error en el cliente.";
     }
 
-    if (maintText.trim()) {
-      reportText += `\n*MANTENIMIENTOS:*\n${maintText}\n`;
-    }
-    if (observationsText.trim()) {
-      reportText += `\n*OBSERVACIONES GENERALES:*\n${observationsText}\n`;
-    }
-
-    // 6. Send to WhatsApp and/or Telegram
+        // 6. Send to WhatsApp and/or Telegram
     let sendSuccess = false;
     let errorMsg = null;
     let resultData = null;
 
-    // Utilidad para evitar que Vercel cancele el script a los 10 segundos
     const fetchWithTimeout = (url, options, timeout = 4000) => {
       return Promise.race([
         fetch(url, options),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: El servidor destino tardó demasiado en responder')), timeout))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), timeout))
       ]);
     };
 
+    let telegramPromise = Promise.resolve();
+
     try {
-      // 6.a Enviar a Telegram (si está configurado)
       if (settings.telegramBotToken && settings.telegramChatId) {
-          try {
-             const telegramUrl = `https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`;
-             const tResp = await fetch(telegramUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                   chat_id: settings.telegramChatId, 
-                   text: reportText,
-                   parse_mode: 'Markdown'
-                })
-             });
-             const tData = await tResp.json().catch(()=>({}));
-             if (tResp.ok && tData.ok) {
-                 sendSuccess = true; // Al menos Telegram fue exitoso
-                 console.log("Telegram enviado correctamente.");
-             } else {
-                 console.error("Telegram Falló:", tData);
-             }
-          } catch(e) {
-             console.error("Telegram error catch:", e);
-          }
+          const telegramUrl = `https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`;
+          telegramPromise = fetch(telegramUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                  chat_id: settings.telegramChatId,
+                  text: reportText,
+                  parse_mode: 'Markdown'
+              })
+          }).then(r => r.json()).then(d => {
+              if (d.ok) { sendSuccess = true; console.log("Telegram OK"); }
+          }).catch(e => console.error("Telegram error:", e));
       }
 
-      // 6.b Enviar a WhatsApp
+      // WhatsApp send
       const provider = settings.whatsappProvider || 'render_baileys';
       let formattedTo = settings.whatsappGroupId || settings.greenApiChatId || '120363427690312638@g.us';
       
       if (!formattedTo) {
          if (!sendSuccess) errorMsg = 'No se ha configurado un ID de grupo destino';
       } else {
+          let url = settings.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message';
+          let bodyPayload = { to: formattedTo.replace('@g.us', '').replace('@c.us', ''), message: reportText };
+          
           if (provider === 'green_api') {
-              const url = `https://api.green-api.com/waInstance${settings.greenApiInstanceId}/sendMessage/${settings.greenApiToken}`;
-              const resp = await fetchWithTimeout(url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ chatId: formattedTo, message: reportText })
-              });
-              resultData = await resp.json();
-              if (resp.ok && !resultData.error) sendSuccess = true;
-              else errorMsg = resultData.error || 'Green API Error';
-          } else {
-              const url = settings.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message';
-              formattedTo = formattedTo.replace('@g.us', '').replace('@c.us', '');
-              const resp = await fetchWithTimeout(url, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ to: formattedTo, message: reportText })
-              });
-              resultData = await resp.json().catch(e=>({}));
-              if (resp.ok && !resultData.error) sendSuccess = true;
-              else errorMsg = resultData.error || resultData.message || 'Render Baileys API Error';
+              url = `https://api.green-api.com/waInstance${settings.greenApiInstanceId}/sendMessage/${settings.greenApiToken}`;
+              bodyPayload = { chatId: formattedTo, message: reportText };
           }
+          
+          const resp = await fetchWithTimeout(url, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(bodyPayload)
+          });
+          resultData = await resp.json().catch(()=>({}));
+          if (resp.ok && !resultData.error) sendSuccess = true;
+          else errorMsg = resultData.error || resultData.message || 'WhatsApp API Error';
       }
+
+      // Wait for Telegram to finish in parallel
+      await telegramPromise;
+      
     } catch(e) {
       errorMsg = e.message;
     }
-
-    // 7. Save backup in Firestore
+// 7. Save backup in Firestore
     const backupId = `bk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const backupData = {
         id: backupId,

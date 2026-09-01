@@ -35,28 +35,31 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
   let telegramSuccess = false;
   let telegramError = null;
 
-  // 1. Send to Telegram if configured
-  if (config.telegramBotToken && config.telegramChatId) {
+  // 1. Send to Telegram if configured (Concurrent)
+  let telegramPromise = Promise.resolve();
+  if (config.telegramBotToken && config.telegramChatId && config.whatsappProvider !== 'none') {
+    const telegramUrl = `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`;
+    telegramPromise = fetch(telegramUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: config.telegramChatId, text: message, parse_mode: 'Markdown' })
+    }).then(r => r.json()).then(d => {
+      if (d.ok) telegramSuccess = true;
+      else telegramError = 'Error Telegram: ' + JSON.stringify(d);
+    }).catch(e => { telegramError = e.message; });
+  } else if (config.telegramBotToken && config.telegramChatId && config.whatsappProvider === 'none') {
+    // If it's a Telegram-only test, wait for it immediately
     try {
       const telegramUrl = `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`;
       const tResp = await fetch(telegramUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: config.telegramChatId,
-          text: message,
-          parse_mode: 'Markdown'
-        })
+        body: JSON.stringify({ chat_id: config.telegramChatId, text: message, parse_mode: 'Markdown' })
       });
       const tData = await tResp.json().catch(() => ({}));
-      if (tResp.ok && tData.ok) {
-        telegramSuccess = true;
-      } else {
-        telegramError = 'Error Telegram: ' + JSON.stringify(tData);
-      }
-    } catch (err: any) {
-      telegramError = err.message;
-    }
+      if (tResp.ok && tData.ok) telegramSuccess = true;
+      else telegramError = 'Error Telegram: ' + JSON.stringify(tData);
+    } catch(err: any) { telegramError = err.message; }
   }
 
   const provider = config.whatsappProvider || 'render_baileys';
@@ -77,9 +80,12 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok || data.error) throw new Error(data.message || data.error || 'Error al conectar con Render Baileys API a través del proxy');
+      await telegramPromise;
+      await telegramPromise;
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
+      await telegramPromise;
       if (telegramSuccess) {
         await saveWhatsAppBackupRecord(message, 'Telegram (WhatsApp Falló)', 'success', undefined, 'telegram');
         return { success: true, data: { message: 'Enviado por Telegram, falló WhatsApp' } };
@@ -109,6 +115,7 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
+      await telegramPromise;
       if (telegramSuccess) {
         await saveWhatsAppBackupRecord(message, 'Telegram (WhatsApp Falló)', 'success', undefined, 'telegram');
         return { success: true, data: { message: 'Enviado por Telegram, falló WhatsApp' } };
