@@ -9,6 +9,8 @@ export interface WhatsAppConfig {
   greenApiInstanceId?: string;
   greenApiToken?: string;
   greenApiChatId?: string;
+  telegramBotToken?: string;
+  telegramChatId?: string;
 }
 
 export async function saveWhatsAppBackupRecord(message: string, recipient: string, status: string, error?: string, provider?: string) {
@@ -30,6 +32,33 @@ export async function saveWhatsAppBackupRecord(message: string, recipient: strin
 }
 
 export async function sendWhatsAppMessageDirect(message: string, config: WhatsAppConfig, customRecipient?: string) {
+  let telegramSuccess = false;
+  let telegramError = null;
+
+  // 1. Send to Telegram if configured
+  if (config.telegramBotToken && config.telegramChatId) {
+    try {
+      const telegramUrl = `https://api.telegram.org/bot${config.telegramBotToken}/sendMessage`;
+      const tResp = await fetch(telegramUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          chat_id: config.telegramChatId,
+          text: message,
+          parse_mode: 'Markdown'
+        })
+      });
+      const tData = await tResp.json().catch(() => ({}));
+      if (tResp.ok && tData.ok) {
+        telegramSuccess = true;
+      } else {
+        telegramError = 'Error Telegram: ' + JSON.stringify(tData);
+      }
+    } catch (err: any) {
+      telegramError = err.message;
+    }
+  }
+
   const provider = config.whatsappProvider || 'render_baileys';
   let formattedTo = customRecipient || config.whatsappGroupId || config.greenApiChatId || '120363427690312638@g.us';
 
@@ -51,6 +80,10 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
+      if (telegramSuccess) {
+        await saveWhatsAppBackupRecord(message, 'Telegram (WhatsApp Falló)', 'success', undefined, 'telegram');
+        return { success: true, data: { message: 'Enviado por Telegram, falló WhatsApp' } };
+      }
       await saveWhatsAppBackupRecord(message, formattedTo, 'failed', err.message, provider);
       return { success: false, error: err.message };
     }
@@ -76,9 +109,18 @@ export async function sendWhatsAppMessageDirect(message: string, config: WhatsAp
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
       return { success: true, data };
     } catch (err: any) {
+      if (telegramSuccess) {
+        await saveWhatsAppBackupRecord(message, 'Telegram (WhatsApp Falló)', 'success', undefined, 'telegram');
+        return { success: true, data: { message: 'Enviado por Telegram, falló WhatsApp' } };
+      }
       await saveWhatsAppBackupRecord(message, formattedTo, 'failed', err.message, provider);
       return { success: false, error: err.message };
     }
+  }
+
+  if (telegramSuccess) {
+     await saveWhatsAppBackupRecord(message, 'Telegram', 'success', undefined, 'telegram');
+     return { success: true, data: { message: 'Enviado a Telegram' } };
   }
 
   return { success: false, error: 'Proveedor no soportado en modo cliente' };

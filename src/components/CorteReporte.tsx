@@ -883,7 +883,7 @@ export const CorteReporte: React.FC = () => {
 
     try {
       const { sendWhatsAppMessageDirect } = await import('../whatsapp');
-      const configDoc = await getDoc(doc(db, 'config', 'whatsapp'));
+      const configDoc = await getDoc(doc(db, 'config', 'app_settings'));
       const whatsappConfig = configDoc.exists() ? configDoc.data() as any : {};
       
       const response = await sendWhatsAppMessageDirect(

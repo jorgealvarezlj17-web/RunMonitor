@@ -72,6 +72,8 @@ interface AppConfig {
   shiftStartTime?: string;
   shiftEndTime?: string;
   shiftRangeMode?: 'scheduled' | 'until_now';
+  telegramBotToken?: string;
+  telegramChatId?: string;
   autoSendWhatsAppEnabled?: boolean;
 }
 
@@ -94,7 +96,7 @@ interface WhatsAppBackupRecord {
   type?: string;
 }
 
-type SettingsTab = 'schedule' | 'whatsapp' | 'backups' | 'categories' | 'system';
+type SettingsTab = 'schedule' | 'whatsapp' | 'telegram' | 'backups' | 'categories' | 'system';
 
 export const Settings: React.FC = () => {
   const { profile } = useProfile();
@@ -108,6 +110,11 @@ export const Settings: React.FC = () => {
   // Backup state
   const [backups, setBackups] = useState<WhatsAppBackupRecord[]>([]);
   const [isLoadingBackups, setIsLoadingBackups] = useState(false);
+
+  // Test connection state
+  const [testingService, setTestingService] = useState<'none' | 'whatsapp' | 'telegram'>('none');
+  const [testResult, setTestResult] = useState<'idle' | 'success' | 'error'>('idle');
+  const [testMessage, setTestMessage] = useState('');
   const [backupFilter, setBackupFilter] = useState<'all' | 'success' | 'failed'>('all');
   const [backupSearch, setBackupSearch] = useState('');
   const [resendingId, setResendingId] = useState<string | null>(null);
@@ -230,6 +237,68 @@ export const Settings: React.FC = () => {
       setConfig(prev => ({ ...prev, shiftEndTime: time24 }));
     }
     setTimePickerTarget(null);
+  };
+
+  const handleTestGlobalWhatsApp = async () => {
+    setTestingService('whatsapp');
+    setTestResult('idle');
+    setTestMessage('');
+    try {
+      const pingMessage = `✅ *PRUEBA DE CONEXIÓN WHATSAPP*\n\nRunMonitor está configurado correctamente y enviando este mensaje de prueba.\n\n_Hora: ${format(new Date(), 'HH:mm:ss')}_`;
+      
+      const result = await sendWhatsAppMessageDirect(pingMessage, {
+        whatsappProvider: config.whatsappProvider,
+        whatsappApiUrl: config.whatsappApiUrl,
+        whatsappToken: config.whatsappToken,
+        whatsappGroupId: config.whatsappGroupId,
+        greenApiInstanceId: config.greenApiInstanceId,
+        greenApiToken: config.greenApiToken,
+        greenApiChatId: config.greenApiChatId
+      });
+
+      if (result.success) {
+        setTestResult('success');
+        setTestMessage('✅ ¡Conexión exitosa en WhatsApp! El mensaje de prueba ha sido enviado.');
+      } else {
+        setTestResult('error');
+        setTestMessage(`❌ Error de conexión en WhatsApp: ${result.error}`);
+      }
+    } catch (err: any) {
+      setTestResult('error');
+      setTestMessage(`❌ Ocurrió un error inesperado (WhatsApp): ${err.message}`);
+    } finally {
+      setTestingService('none');
+      setTimeout(() => setTestResult('idle'), 8000);
+    }
+  };
+
+  const handleTestGlobalTelegram = async () => {
+    setTestingService('telegram');
+    setTestResult('idle');
+    setTestMessage('');
+    try {
+      const pingMessage = `✅ *PRUEBA DE CONEXIÓN TELEGRAM*\n\nRunMonitor está configurado correctamente y enviando este mensaje de prueba.\n\n_Hora: ${format(new Date(), 'HH:mm:ss')}_`;
+      
+      const result = await sendWhatsAppMessageDirect(pingMessage, {
+        whatsappProvider: 'none', // skip WhatsApp logic
+        telegramBotToken: config.telegramBotToken,
+        telegramChatId: config.telegramChatId
+      });
+
+      if (result.success) {
+        setTestResult('success');
+        setTestMessage('✅ ¡Conexión exitosa en Telegram! El mensaje de prueba ha sido enviado.');
+      } else {
+        setTestResult('error');
+        setTestMessage(`❌ Error de conexión en Telegram: Revisa tu Token y Chat ID.`);
+      }
+    } catch (err: any) {
+      setTestResult('error');
+      setTestMessage(`❌ Ocurrió un error inesperado (Telegram): ${err.message}`);
+    } finally {
+      setTestingService('none');
+      setTimeout(() => setTestResult('idle'), 8000);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -711,6 +780,22 @@ export const Settings: React.FC = () => {
           type="button"
           onClick={() => {
             sounds.playClick();
+            setActiveTab('telegram');
+          }}
+          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+            activeTab === 'telegram'
+              ? 'bg-white text-blue-500 shadow-sm border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Send size={16} className={activeTab === 'telegram' ? 'text-blue-500' : 'text-slate-400'} />
+          <span>Telegram</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
             setActiveTab('backups');
           }}
           className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
@@ -1004,6 +1089,45 @@ export const Settings: React.FC = () => {
                     </span>
                   </div>
                 </div>
+
+                {/* Connection Test Section */}
+                <div className="mt-4 p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-800">Probar Conexión</h4>
+                    <p className="text-xs text-slate-500">Envía un mensaje de prueba para verificar que los bots estén funcionando.</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleTestGlobalWhatsApp}
+                      disabled={testingService !== 'none' || !isAdmin || isReadOnly}
+                      className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all disabled:opacity-50"
+                    >
+                      {testingService === 'whatsapp' ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
+                      <span>Probar WhatsApp</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleTestGlobalTelegram}
+                      disabled={testingService !== 'none' || !isAdmin || isReadOnly}
+                      className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-extrabold rounded-xl transition-all disabled:opacity-50"
+                    >
+                      {testingService === 'telegram' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                      <span>Probar Telegram</span>
+                    </button>
+                  </div>
+                </div>
+                {testResult !== 'idle' && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={`mt-2 p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      testResult === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                    }`}
+                  >
+                    {testMessage}
+                  </motion.div>
+                )}
               </div>
             </div>
 
@@ -1031,7 +1155,80 @@ export const Settings: React.FC = () => {
         )}
 
         {/* =================================================================== */}
-        {/* TAB 2: WHATSAPP & GREEN API INTEGRATION                             */}
+        {/* TAB: TELEGRAM INTEGRATION                                           */}
+        {/* =================================================================== */}
+        {activeTab === 'telegram' && (
+          <motion.div
+            key="tab-telegram"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center border border-blue-200 shadow-sm">
+                    <Send className="text-blue-600" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Integración con Telegram (Oficial)</h2>
+                    <p className="text-xs text-slate-500 font-medium">Conexión 100% estable y gratuita para reportes.</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-4 text-xs text-blue-900 flex items-start gap-2.5">
+                <span className="text-blue-700 font-black">ℹ️</span>
+                <div className="space-y-1">
+                  <p className="font-bold">¿Cómo configurar Telegram?</p>
+                  <ol className="list-decimal pl-4 space-y-1 mt-1 opacity-90">
+                    <li>Abre Telegram y busca <strong>@BotFather</strong>.</li>
+                    <li>Mándale el comando <strong>/newbot</strong> y sigue los pasos para crear un bot.</li>
+                    <li>Copia el <strong>Token HTTP API</strong> que te dará y pégalo abajo.</li>
+                    <li>Agrega tu nuevo bot al grupo de tu empresa y envíale un mensaje cualquiera.</li>
+                    <li>Copia el <strong>Chat ID</strong> de ese grupo (puedes usar un bot como @RawDataBot para saber el ID del grupo, que suele empezar con un guión, ej: -100123456789).</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-2 border-t border-slate-100">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Token del Bot (HTTP API)
+                  </label>
+                  <input
+                    type="password"
+                    value={config.telegramBotToken || ''}
+                    onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
+                    disabled={isReadOnly || !isAdmin}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
+                    placeholder="Ej: 1234567890:ABCdefGhIjkLmnOpQRstuVWXyz"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Chat ID (Grupo de Destino)
+                  </label>
+                  <input
+                    type="text"
+                    value={config.telegramChatId || ''}
+                    onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
+                    disabled={isReadOnly || !isAdmin}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
+                    placeholder="Ej: -100123456789"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">Asegúrate de agregar tu bot a este grupo y darle permisos para escribir.</p>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB: WHATSAPP & GREEN API INTEGRATION                             */}
         {/* =================================================================== */}
         {activeTab === 'whatsapp' && (
           <motion.div

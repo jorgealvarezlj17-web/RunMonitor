@@ -205,7 +205,7 @@ export default async function handler(req, res) {
       reportText += `\n*OBSERVACIONES GENERALES:*\n${observationsText}\n`;
     }
 
-    // 6. Send to WhatsApp via internal proxy/Render
+    // 6. Send to WhatsApp and/or Telegram
     let sendSuccess = false;
     let errorMsg = null;
     let resultData = null;
@@ -214,22 +214,45 @@ export default async function handler(req, res) {
     const fetchWithTimeout = (url, options, timeout = 4000) => {
       return Promise.race([
         fetch(url, options),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: El bot de WhatsApp tardó demasiado en responder')), timeout))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout: El servidor destino tardó demasiado en responder')), timeout))
       ]);
     };
 
     try {
-      const wpConfigDoc = await getDoc(doc(db, 'config', 'whatsapp'));
-      const wpConfig = wpConfigDoc.exists() ? wpConfigDoc.data() : {};
-      
-      const provider = wpConfig.whatsappProvider || 'render_baileys';
-      let formattedTo = wpConfig.whatsappGroupId || wpConfig.greenApiChatId || '120363427690312638@g.us';
+      // 6.a Enviar a Telegram (si está configurado)
+      if (settings.telegramBotToken && settings.telegramChatId) {
+          try {
+             const telegramUrl = `https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`;
+             const tResp = await fetch(telegramUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                   chat_id: settings.telegramChatId, 
+                   text: reportText,
+                   parse_mode: 'Markdown'
+                })
+             });
+             const tData = await tResp.json().catch(()=>({}));
+             if (tResp.ok && tData.ok) {
+                 sendSuccess = true; // Al menos Telegram fue exitoso
+                 console.log("Telegram enviado correctamente.");
+             } else {
+                 console.error("Telegram Falló:", tData);
+             }
+          } catch(e) {
+             console.error("Telegram error catch:", e);
+          }
+      }
+
+      // 6.b Enviar a WhatsApp
+      const provider = settings.whatsappProvider || 'render_baileys';
+      let formattedTo = settings.whatsappGroupId || settings.greenApiChatId || '120363427690312638@g.us';
       
       if (!formattedTo) {
-         errorMsg = 'No se ha configurado un ID de grupo destino';
+         if (!sendSuccess) errorMsg = 'No se ha configurado un ID de grupo destino';
       } else {
           if (provider === 'green_api') {
-              const url = `https://api.green-api.com/waInstance${wpConfig.greenApiInstanceId}/sendMessage/${wpConfig.greenApiToken}`;
+              const url = `https://api.green-api.com/waInstance${settings.greenApiInstanceId}/sendMessage/${settings.greenApiToken}`;
               const resp = await fetchWithTimeout(url, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
@@ -239,7 +262,7 @@ export default async function handler(req, res) {
               if (resp.ok && !resultData.error) sendSuccess = true;
               else errorMsg = resultData.error || 'Green API Error';
           } else {
-              const url = wpConfig.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message';
+              const url = settings.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message';
               formattedTo = formattedTo.replace('@g.us', '').replace('@c.us', '');
               const resp = await fetchWithTimeout(url, {
                   method: 'POST',
