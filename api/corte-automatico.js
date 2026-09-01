@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     targetShiftEnd.setUTCHours(endH, endM, 0, 0);
 
     // If current local time is before the target end time of today
-    if (nowLocal < targetShiftEnd) {
+    if (nowLocal.getTime() < targetShiftEnd.getTime() - 7000) {
       return res.status(200).json({ message: `Still before cutoff time (${endTime}). Current local time: ${nowLocal.toISOString()}` });
     }
 
