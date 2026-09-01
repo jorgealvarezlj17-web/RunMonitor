@@ -471,7 +471,7 @@ export function AutoReportGenerator() {
     endToday.setHours(endH, endM, 0, 0);
 
     // Adelantar 7 segundos para compensar la latencia de red y que llegue en el segundo 00;
-    if (now.getTime() < endToday.getTime() - 7000) {
+    if (now.getTime() < endToday.getTime() - 6000) {
       return;
     }
 
