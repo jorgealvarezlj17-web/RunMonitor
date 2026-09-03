@@ -565,34 +565,55 @@ async function startServer() {
   // Background cron to check shift end time
   cron.schedule('* * * * *', async () => {
     try {
-      const db = await ensureValidDb();
-      if(!db) return;
-      const configDoc = await db.collection('config').doc('app_settings').get();
-      if(!configDoc.exists) return;
+      const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
+      if (!fs.existsSync(configPath)) return;
+      const firebaseConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      
+      const { initializeApp, getApps, getApp } = await import('firebase/app');
+      const { getAuth, signInWithEmailAndPassword } = await import('firebase/auth');
+      const { getFirestore, doc, getDoc, updateDoc, setDoc } = await import('firebase/firestore');
+      
+      const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      
+      await signInWithEmailAndPassword(auth, 'cron@runmonitor.app', 'SecureCronPassword123!');
+      
+      const configDoc = await getDoc(doc(db, 'config', 'app_settings'));
+      if(!configDoc.exists()) return;
       const settings = configDoc.data();
       if(settings.autoSendWhatsAppEnabled === false) return;
+      
       const endTime = settings.shiftEndTime;
       if(!endTime) return;
+      
       const nowLocal = new Date();
       nowLocal.setHours(nowLocal.getUTCHours() - 4); // force UTC-4 for Caracas
+      
       const [endH, endM] = endTime.split(':').map(Number);
+      
       if (nowLocal.getHours() === endH && nowLocal.getMinutes() === endM) {
          const dateStr = nowLocal.toISOString().split('T')[0];
          const shiftKey = `${endTime}_${dateStr}`;
+         
          if (settings.lastAutoSentShiftKey === shiftKey) return;
-         const stagedDoc = await db.collection('whatsapp_backups').doc('staged_upcoming_report').get();
-         if(stagedDoc.exists && stagedDoc.data().message) {
+         
+         const stagedDoc = await getDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
+         if(stagedDoc.exists() && stagedDoc.data().message) {
              const finalReport = stagedDoc.data().message;
-             await db.collection('config').doc('app_settings').update({ lastAutoSentShiftKey: shiftKey });
+             
+             await updateDoc(doc(db, 'config', 'app_settings'), { lastAutoSentShiftKey: shiftKey });
+             
              const result = await sendWhatsAppMessage(settings, finalReport);
+             
              const backupId = `bk_${Date.now()}`;
-             await db.collection('whatsapp_backups').doc(backupId).set({
+             await setDoc(doc(db, 'whatsapp_backups', backupId), {
                  id: backupId, timestamp: new Date().toISOString(), recipient: 'WhatsApp y Telegram (Server Cron)', message: finalReport, status: result.success ? 'success' : 'failed', error: result.error || null, type: 'reporte_programado', shiftKey: shiftKey
              });
          }
       }
     } catch(e) {
-      console.error('[Server Cron] Error:', e);
+      console.error('[Server Cron] Error:', e.message);
     }
   });
 

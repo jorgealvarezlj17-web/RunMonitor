@@ -1,0 +1,52 @@
+{
+  "name": "projects/gen-lang-client-0913117191/databases/ai-studio-74af6e8f-3ba6-42d8-b0bb-67d1b54515a4/documents/config/app_settings",
+  "fields": {
+    "shiftRangeMode": {
+      "stringValue": "scheduled"
+    },
+    "reportCronTime": {
+      "stringValue": "0 18 * * "
+    },
+    "whatsappApiUrl": {
+      "stringValue": "https://bot-whatsapp-baileys-jpyb.onrender.com/send-message"
+    },
+    "greenApiInstanceId": {
+      "stringValue": "710722721756"
+    },
+    "lastAutoSentShiftKey": {
+      "stringValue": "16:16_2026-09-02"
+    },
+    "telegramChatId": {
+      "stringValue": "-5351288780"
+    },
+    "whatsappProvider": {
+      "stringValue": "render_baileys"
+    },
+    "greenApiToken": {
+      "stringValue": "648d092ee3fc4965b6a69e39f5f7d15c2694eb6bc7be48058b"
+    },
+    "greenApiChatId": {
+      "stringValue": "120363427690312638@g.us"
+    },
+    "autoSendWhatsAppEnabled": {
+      "booleanValue": true
+    },
+    "telegramBotToken": {
+      "stringValue": "8806419490:AAHiQ7K70waz4-2-ucVmdvi8XFckNZ5MWY0"
+    },
+    "shiftEndTime": {
+      "stringValue": "16:16"
+    },
+    "whatsappToken": {
+      "stringValue": ""
+    },
+    "whatsappGroupId": {
+      "stringValue": "120363427690312638@g.us"
+    },
+    "shiftStartTime": {
+      "stringValue": "18:00"
+    }
+  },
+  "createTime": "2026-03-18T18:26:28.734045Z",
+  "updateTime": "2026-09-02T20:16:22.437443Z"
+}
