@@ -14,6 +14,7 @@ import { PanelRegistro } from './components/PanelRegistro';
 import { StatsPanel } from './components/StatsPanel';
 import Settings from './components/Settings';
 import { TeamPanel } from './components/TeamPanel';
+import { UpdateBanner } from './components/UpdateBanner';
 import { Activity, ShieldCheck, Menu, X, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -186,6 +187,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
+      <UpdateBanner />
       {user && <AutoReportGenerator />}
       <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
         {!user ? (

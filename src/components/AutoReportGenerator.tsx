@@ -459,155 +459,6 @@ export function AutoReportGenerator() {
     }
   };
 
-  const checkAndTriggerAutoReport = async () => {
-    if (!configLoadedRef.current || isExecutingRef.current) return;
-    if (rangeMode === 'until_now' || !endTime) return;
-
-    const [endH, endM] = endTime.split(':').map(Number);
-    if (isNaN(endH) || isNaN(endM)) return;
-
-    const now = new Date();
-    const endToday = new Date(now);
-    endToday.setHours(endH, endM, 0, 0);
-
-    // Adelantar 7 segundos para compensar la latencia de red y que llegue en el segundo 00;
-    if (now.getTime() < endToday.getTime() - 6000) {
-      return;
-    }
-
-    const targetShiftEnd = endToday;
-    const dateStr = format(targetShiftEnd, 'yyyy-MM-dd');
-    const shiftKey = `${endTime}_${dateStr}`;
-
-    if (lastAutoSentShiftKey === shiftKey) return;
-
-    try {
-      isExecutingRef.current = true;
-      const settingsRef = doc(db, 'config', 'app_settings');
-      const docSnap = await getDoc(settingsRef);
-      if (docSnap.exists() && docSnap.data().lastAutoSentShiftKey === shiftKey) {
-        setLastAutoSentShiftKey(shiftKey);
-        isExecutingRef.current = false;
-        return;
-      }
-
-      await setDoc(settingsRef, { lastAutoSentShiftKey: shiftKey }, { merge: true });
-      setLastAutoSentShiftKey(shiftKey);
-
-      console.log(`[AutoReportGenerator] Ejecutando corte programado (${shiftKey}). WhatsApp AutoSend: ${autoSendEnabled ? 'ACTIVO' : 'DESACTIVADO'}...`);
-      
-      // Get staged report or build fresh
-      let finalReport = '';
-      const stagedSnap = await getDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
-      if (stagedSnap.exists() && stagedSnap.data().message) {
-        finalReport = stagedSnap.data().message;
-      } else {
-        finalReport = await buildCurrentReportText(targetShiftEnd);
-      }
-
-      let backupStatus: 'success' | 'failed' | 'saved' = 'saved';
-      let errorMsg: string | null = null;
-      let recipientName = 'Respaldo Local (WhatsApp Desactivado)';
-
-      // If WhatsApp auto send is enabled, attempt to send via API
-      if (autoSendEnabled) {
-        recipientName = 'Grupo WhatsApp (Automático)';
-        try {
-          const { sendWhatsAppMessageDirect } = await import('../whatsapp');
-          const configDoc = await getDoc(doc(db, 'config', 'app_settings'));
-          const whatsappConfig = configDoc.exists() ? configDoc.data() as any : {};
-          
-          const response = await sendWhatsAppMessageDirect(
-            finalReport,
-            whatsappConfig
-          );
-
-          if (response.success) {
-            backupStatus = 'success';
-          } else {
-            backupStatus = 'failed';
-            errorMsg = response.error || 'Error al enviar a WhatsApp';
-          }
-        } catch (netErr: any) {
-          backupStatus = 'failed';
-          errorMsg = netErr.message || 'Error de conexión con el servicio de WhatsApp';
-        }
-      } else {
-        // WhatsApp auto-send was toggled off, but report is saved to backup
-        backupStatus = 'saved';
-        errorMsg = null;
-      }
-
-      // CRITICAL: Always create permanent backup entry in whatsapp_backups regardless of WhatsApp status or configuration!
-      const backupId = `bk_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-      await setDoc(doc(db, 'whatsapp_backups', backupId), {
-        id: backupId,
-        timestamp: new Date().toISOString(),
-        recipient: recipientName,
-        message: finalReport,
-        status: backupStatus,
-        error: errorMsg,
-        type: 'reporte_programado',
-        shiftKey: shiftKey,
-        whatsappSent: backupStatus === 'success'
-      });
-
-      // Remove staged doc
-      try {
-        await deleteDoc(doc(db, 'whatsapp_backups', 'staged_upcoming_report'));
-      } catch (_) {}
-
-      // Always execute shift cutoff and state preservation
-      let currentTanksAireacion = [];
-      let currentTanksMovimiento = [];
-      
-      const tanksDoc = await getDoc(doc(db, 'config', 'current_shift_tanks'));
-      if (tanksDoc.exists()) {
-        const tData = tanksDoc.data();
-        currentTanksAireacion = tData.tanquesAireacion || [];
-        currentTanksMovimiento = tData.tanquesMovimiento || [];
-      }
-
-      await setDoc(doc(db, 'config', 'previous_shift_tanks'), {
-        tanquesAireacion: currentTanksAireacion,
-        tanquesMovimiento: currentTanksMovimiento,
-        lastUpdated: serverTimestamp()
-      }, { merge: true });
-
-      await Promise.all([
-        setDoc(doc(db, 'config', 'current_shift_observations'), { observations: '', lastUpdated: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, 'config', 'current_shift_maintenance'), { records: '', lastUpdated: serverTimestamp() }, { merge: true }),
-        setDoc(doc(db, 'config', 'current_shift_tanks'), { tanquesAireacion: [], tanquesMovimiento: [], lastUpdated: serverTimestamp() }, { merge: true })
-      ]);
-
-      const notifTitle = backupStatus === 'success' 
-        ? 'Corte de Reporte Enviado a WhatsApp' 
-        : backupStatus === 'saved' 
-          ? 'Corte de Reporte Guardado en Respaldo' 
-          : 'Corte de Reporte Guardado (Falla WhatsApp)';
-
-      const notifMessage = backupStatus === 'success'
-        ? `El reporte operativo fue generado y enviado automáticamente a WhatsApp a las ${new Date().toLocaleTimeString()}.`
-        : backupStatus === 'saved'
-          ? `El reporte programado fue generado y guardado en respaldo a las ${new Date().toLocaleTimeString()} (Envío a WhatsApp desactivado).`
-          : `El reporte fue guardado en el módulo de respaldos. WhatsApp reportó: ${errorMsg || 'desconectado'}.`;
-
-      await addDoc(collection(db, 'notifications'), {
-        title: notifTitle,
-        message: notifMessage,
-        type: backupStatus === 'failed' ? 'warning' : 'success',
-        timestamp: serverTimestamp(),
-        read: false
-      });
-
-      console.log(`[AutoReportGenerator] Corte programado completado con éxito. Estado: ${backupStatus}`);
-    } catch (err) {
-      console.error("Error in Global Auto Report generator:", err);
-    } finally {
-      isExecutingRef.current = false;
-    }
-  };
-
   useEffect(() => {
     // Stage immediately
     stageCurrentReport();
@@ -620,12 +471,10 @@ export function AutoReportGenerator() {
     const unsubEquip = onSnapshot(collection(db, 'equipment'), () => stageCurrentReport());
 
     const stageInterval = setInterval(() => stageCurrentReport(), 10000);
-    const triggerInterval = setInterval(() => checkAndTriggerAutoReport(), 5000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         stageCurrentReport();
-        checkAndTriggerAutoReport();
       }
     };
 
@@ -639,7 +488,6 @@ export function AutoReportGenerator() {
       unsubMaint();
       unsubEquip();
       clearInterval(stageInterval);
-      clearInterval(triggerInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);
     };

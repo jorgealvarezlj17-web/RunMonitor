@@ -75,6 +75,7 @@ interface AppConfig {
   telegramBotToken?: string;
   telegramChatId?: string;
   autoSendWhatsAppEnabled?: boolean;
+  isUpdatingApp?: boolean;
 }
 
 const to12h = (time24: string) => {
@@ -2094,8 +2095,27 @@ export const Settings: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Mantenimiento de la Aplicación</h2>
-                  <p className="text-xs text-slate-500 font-medium">Acciones para limpiar datos temporales del navegador y actualizar</p>
+                  <p className="text-xs text-slate-500 font-medium">Notifica a los usuarios que la app está en actualización</p>
                 </div>
+              </div>
+
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <div className="text-xs font-bold text-amber-900">Modo de Actualización (Notificar a Todos)</div>
+                  <div className="text-[11px] text-amber-700 mt-0.5">
+                    Activa esto cuando subas cambios a GitHub y Vercel. Mostrará un aviso global arriba a todos los usuarios indicando que la app se está actualizando para que esperen o limpien la caché.
+                  </div>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={config.isUpdatingApp === true}
+                    disabled={isReadOnly || !isAdmin}
+                    onChange={(e) => setConfig({ ...config, isUpdatingApp: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                </label>
               </div>
 
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
