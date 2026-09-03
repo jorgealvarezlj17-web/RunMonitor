@@ -130,6 +130,21 @@ async function startServer() {
 
   // Helper function to send WhatsApp message supporting Render Baileys API, Green API, Whapi, etc.
   async function sendWhatsAppMessage(appConfig: any, message: string, customRecipient?: string) {
+    let telegramSuccess = false;
+    let telegramPromise = Promise.resolve();
+    if (appConfig?.telegramBotToken && appConfig?.telegramChatId) {
+       const tUrl = `https://api.telegram.org/bot${appConfig.telegramBotToken}/sendMessage`;
+       telegramPromise = axios.post(tUrl, {
+           chat_id: appConfig.telegramChatId,
+           text: message,
+           parse_mode: 'Markdown'
+       }).then(r => {
+           if(r.data.ok) telegramSuccess = true;
+       }).catch(e => {
+           console.error("Telegram error in server:", e.message);
+       });
+    }
+
     const provider = appConfig?.whatsappProvider || 'render_baileys';
     
     // 1. Render Baileys API (Default: https://bot-whatsapp-baileys-jpyb.onrender.com/send-message)
@@ -170,7 +185,7 @@ async function startServer() {
 
           console.log("Message successfully sent via Render Baileys API:", response.data);
           await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
-          return { success: true, data: response.data };
+          await telegramPromise; return { success: true, data: response.data };
         } catch (error: any) {
           const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
           const isNetworkOr5xx = error.response?.status >= 500 || error.code === 'ENOTFOUND' || error.code === 'ECONNRESET';
@@ -232,7 +247,7 @@ async function startServer() {
         });
         console.log("Message successfully sent via Green API:", response.data);
         await saveWhatsAppBackupRecord(message, formattedChatId, 'success', undefined, 'greenapi');
-        return { success: true, data: response.data };
+        await telegramPromise; return { success: true, data: response.data };
       } catch (error: any) {
         const errMsg = error?.response?.data?.message || error.message;
         console.error("Error sending message via Green API:", error?.response?.data || error.message);
@@ -271,7 +286,7 @@ async function startServer() {
       });
       console.log("Message successfully sent via WhatsApp API:", response.data);
       await saveWhatsAppBackupRecord(message, formattedTo, 'success', undefined, provider);
-      return { success: true, data: response.data };
+      await telegramPromise; return { success: true, data: response.data };
     } catch (error: any) {
       const errMsg = error?.response?.data?.message || error.message;
       console.error("Error sending message via WhatsApp API:", error?.response?.data || error.message);
@@ -546,6 +561,40 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  // Background cron to check shift end time
+  cron.schedule('* * * * *', async () => {
+    try {
+      const db = await ensureValidDb();
+      if(!db) return;
+      const configDoc = await db.collection('config').doc('app_settings').get();
+      if(!configDoc.exists) return;
+      const settings = configDoc.data();
+      if(settings.autoSendWhatsAppEnabled === false) return;
+      const endTime = settings.shiftEndTime;
+      if(!endTime) return;
+      const nowLocal = new Date();
+      nowLocal.setHours(nowLocal.getUTCHours() - 4); // force UTC-4 for Caracas
+      const [endH, endM] = endTime.split(':').map(Number);
+      if (nowLocal.getHours() === endH && nowLocal.getMinutes() === endM) {
+         const dateStr = nowLocal.toISOString().split('T')[0];
+         const shiftKey = `${endTime}_${dateStr}`;
+         if (settings.lastAutoSentShiftKey === shiftKey) return;
+         const stagedDoc = await db.collection('whatsapp_backups').doc('staged_upcoming_report').get();
+         if(stagedDoc.exists && stagedDoc.data().message) {
+             const finalReport = stagedDoc.data().message;
+             await db.collection('config').doc('app_settings').update({ lastAutoSentShiftKey: shiftKey });
+             const result = await sendWhatsAppMessage(settings, finalReport);
+             const backupId = `bk_${Date.now()}`;
+             await db.collection('whatsapp_backups').doc(backupId).set({
+                 id: backupId, timestamp: new Date().toISOString(), recipient: 'WhatsApp y Telegram (Server Cron)', message: finalReport, status: result.success ? 'success' : 'failed', error: result.error || null, type: 'reporte_programado', shiftKey: shiftKey
+             });
+         }
+      }
+    } catch(e) {
+      console.error('[Server Cron] Error:', e);
+    }
+  });
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
