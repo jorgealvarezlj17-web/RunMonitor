@@ -575,7 +575,7 @@ async function startServer() {
       
       const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
       const auth = getAuth(app);
-      const db = getFirestore(app);
+      const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
       
       await signInWithEmailAndPassword(auth, 'cron@runmonitor.app', 'SecureCronPassword123!');
       
