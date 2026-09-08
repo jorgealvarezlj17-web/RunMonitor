@@ -30,6 +30,9 @@ if (typeof window !== 'undefined') {
 export const storage = getStorage(app);
 
 async function testConnection() {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return;
+  }
   try {
     // Use getDocFromServer to bypass local cache and test the actual connection
     await getDocFromServer(doc(db, 'test', 'connection'));

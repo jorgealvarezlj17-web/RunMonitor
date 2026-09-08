@@ -724,7 +724,9 @@ export const EquipmentList: React.FC = () => {
   }, [selectedEquipment]);
 
   useEffect(() => {
-    if (!auth.currentUser) {
+    const cachedAuth = typeof window !== 'undefined' ? localStorage.getItem('cached_auth_user') : null;
+    const hasUser = !!auth.currentUser || !!cachedAuth || !!profile;
+    if (!hasUser) {
       setLoading(false);
       return;
     }
@@ -732,7 +734,7 @@ export const EquipmentList: React.FC = () => {
     // Fallback timeout for loading state
     const timeout = setTimeout(() => {
       if (loading) setLoading(false);
-    }, 5000);
+    }, 4000);
 
     const qEquip = query(
       collection(db, 'equipment')
@@ -791,7 +793,7 @@ export const EquipmentList: React.FC = () => {
       unsubscribePower();
       clearTimeout(timeout);
     };
-  }, [auth.currentUser]);
+  }, [auth.currentUser, profile?.id]);
 
   const renameCategory = async (id: string, newName: string) => {
     if (isReadOnly) return;
@@ -904,7 +906,9 @@ export const EquipmentList: React.FC = () => {
   const executeToggle = async (item: Equipment, reason?: string, registerPowerRestored: boolean = false) => {
     setProcessingId(item.id);
     
-    if (!auth.currentUser) {
+    const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || '{}')?.uid : null);
+
+    if (!currentUid) {
       setProcessingId(null);
       setPowerPromptState(null);
       return;
@@ -952,7 +956,7 @@ export const EquipmentList: React.FC = () => {
         equipmentId: item.id,
         action: newStatus,
         timestamp: serverTimestamp(),
-        userUid: auth.currentUser.uid
+        userUid: currentUid
       };
 
       if (reason) {
@@ -968,7 +972,7 @@ export const EquipmentList: React.FC = () => {
         batch.set(powerEventRef, {
           type: reason === 'Apagado por falla en Corpoelec' ? 'falla' : 'corte',
           timestamp: serverTimestamp(),
-          userUid: auth.currentUser.uid
+          userUid: currentUid
         });
       }
 
@@ -977,7 +981,7 @@ export const EquipmentList: React.FC = () => {
         batch.set(powerEventRef, {
           type: 'ok',
           timestamp: serverTimestamp(),
-          userUid: auth.currentUser.uid
+          userUid: currentUid
         });
       }
 

@@ -26,9 +26,29 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 const APP_VERSION = "1.2.0";
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [authReady, setAuthReady] = useState(false);
+  const [user, setUser] = useState<User | any | null>(() => {
+    try {
+      const cached = localStorage.getItem('cached_auth_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('cached_auth_user');
+    } catch {
+      return true;
+    }
+  });
+  const [authReady, setAuthReady] = useState<boolean>(() => {
+    try {
+      return !!localStorage.getItem('cached_auth_user');
+    } catch {
+      return false;
+    }
+  });
+  const [forcedEnter, setForcedEnter] = useState(false);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [shiftStartTime, setShiftStartTime] = useState('18:00');
@@ -94,11 +114,30 @@ export default function App() {
         setAuthReady(true);
         setLoading(false);
       }
-    }, 2000);
+    }, 1500);
 
     const unsubscribe = onAuthStateChanged(auth, (authUser) => {
       if (isMounted) {
-        setUser(authUser);
+        if (authUser) {
+          setUser(authUser);
+          try {
+            localStorage.setItem('cached_auth_user', JSON.stringify({
+              uid: authUser.uid,
+              email: authUser.email,
+              displayName: authUser.displayName,
+              photoURL: authUser.photoURL
+            }));
+          } catch (e) {
+            console.warn('Error caching auth user:', e);
+          }
+        } else {
+          // If offline, do NOT remove user! Preserve the offline cached session
+          const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+          if (!isOffline) {
+            setUser(null);
+            localStorage.removeItem('cached_auth_user');
+          }
+        }
         setAuthReady(true);
         setLoading(false);
         clearTimeout(timeout);
@@ -112,10 +151,16 @@ export default function App() {
     };
   }, []); // Empty dependency array ensures this runs only once on mount
 
-  // Fast offline readiness: if profile is in cache or offline, do not block the app
-  const isProfileReady = !profileLoading || profile !== null || (typeof navigator !== 'undefined' && !navigator.onLine);
+  // Auto-enter as soon as user and auth are confirmed
+  useEffect(() => {
+    if (authReady && user && loading) {
+      setLoading(false);
+    }
+  }, [authReady, user, loading]);
 
-  if (loading || (!user && !authReady) || (user && !isProfileReady)) {
+  const shouldShowSplash = !forcedEnter && (loading || (!user && !authReady));
+
+  if (shouldShowSplash) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
         {/* Background glow effects */}
@@ -163,10 +208,13 @@ export default function App() {
               <motion.button
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                onClick={() => setLoading(false)}
+                onClick={() => {
+                  setForcedEnter(true);
+                  setLoading(false);
+                }}
                 className="px-8 py-3 rounded-full bg-cyan-600 hover:bg-cyan-700 text-white font-bold uppercase tracking-widest transition-all shadow-lg shadow-cyan-500/30 active:scale-95"
               >
-                Iniciar
+                Entrar al Sistema
               </motion.button>
             )}
           </div>

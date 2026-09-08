@@ -393,8 +393,10 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
 
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
 
+  const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || '{}')?.uid : null);
+
   const toggleStatus = async (reason?: string) => {
-    if (isReadOnly || isProcessing || !auth.currentUser || equipment.disabled) return;
+    if (isReadOnly || isProcessing || !currentUid || equipment.disabled) return;
 
     if (equipment.status === 'off' && (equipment.lastOffReason === 'Apagado por falla en Corpoelec' || equipment.lastOffReason === 'Apagado por corte eléctrico')) {
       setShowPowerPrompt(true);
@@ -407,7 +409,7 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
   const executeToggle = async (reason?: string, registerPowerRestored: boolean = false) => {
     setIsProcessing(true);
     
-    if (!auth.currentUser) {
+    if (!currentUid) {
       setIsProcessing(false);
       setShowPowerPrompt(false);
       return;
@@ -442,7 +444,7 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
         equipmentId: equipment.id,
         action: newStatus,
         timestamp: serverTimestamp(),
-        userUid: auth.currentUser.uid
+        userUid: currentUid
       };
 
       if (reason) {
@@ -456,7 +458,7 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
         batch.set(powerEventRef, {
           type: reason === 'Apagado por falla en Corpoelec' ? 'falla' : 'corte',
           timestamp: serverTimestamp(),
-          userUid: auth.currentUser.uid
+          userUid: currentUid
         });
       }
 
@@ -465,7 +467,7 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
         batch.set(powerEventRef, {
           type: 'ok',
           timestamp: serverTimestamp(),
-          userUid: auth.currentUser.uid
+          userUid: currentUid
         });
       }
 
@@ -761,7 +763,7 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
         equipmentId: equipment.id,
         action: currentManualAction || 'manual',
         timestamp,
-        userUid: auth.currentUser.uid,
+        userUid: currentUid,
         details: currentManualNote || null,
         imageUrls: currentManualImages.length > 0 ? currentManualImages : null,
         isManual: true

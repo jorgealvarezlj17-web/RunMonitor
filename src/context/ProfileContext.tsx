@@ -91,7 +91,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loading, setLoading] = useState<boolean>(() => {
     try {
       const cached = localStorage.getItem('cached_user_profile');
-      return cached && typeof navigator !== 'undefined' && !navigator.onLine ? false : true;
+      return cached ? false : true;
     } catch {
       return true;
     }
@@ -111,6 +111,10 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const logout = async () => {
+    try {
+      localStorage.removeItem('cached_auth_user');
+      localStorage.removeItem('cached_user_profile');
+    } catch {}
     updateCachedProfile(null);
     if (auth.currentUser) {
       const profileRef = doc(db, 'profiles', auth.currentUser.uid);
@@ -163,17 +167,22 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const profilePath = `profiles/${user.uid}`;
+        // Cache user info immediately for offline support
+        try {
+          localStorage.setItem('cached_auth_user', JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL
+          }));
+        } catch (e) {
+          console.warn('Error caching auth user:', e);
+        }
+
         const profileRef = doc(db, 'profiles', user.uid);
         currentUserRef = profileRef;
-        
-        // Check if profile exists, if not create it
-        let docSnap;
-        try {
-          docSnap = await getDoc(profileRef);
-        } catch (err) {
-          console.warn('Offline reading profileRef:', err);
-        }
+        const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
+        const isAdminEmail = isMasterAdminEmail(userEmailLower);
 
         const updatePresence = async (isViewing = true) => {
           if (!currentUserRef) return;
@@ -199,52 +208,9 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         };
 
-        if (!docSnap || !docSnap.exists()) {
-          const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
-          const isAdminEmail = isMasterAdminEmail(userEmailLower);
-          
-          let initialRole: 'admin' | 'operator' = isAdminEmail ? 'admin' : 'operator';
-          let initialName = user.displayName || user.email?.split('@')[0] || (isAdminEmail ? 'Administrador' : 'Operador');
-
-          // Check if there is pre-configured data in allowed_emails
-          try {
-            const allowedDoc = await getDoc(doc(db, 'allowed_emails', userEmailLower));
-            if (allowedDoc.exists()) {
-              const allowedData = allowedDoc.data();
-              if (allowedData.name) initialName = allowedData.name;
-              if (allowedData.role === 'admin') initialRole = 'admin';
-            }
-          } catch (e) {
-            console.warn('Could not read allowed_emails for initial profile (offline or missing):', e);
-          }
-
-          const newProfile: Profile = {
-            id: user.uid,
-            email: user.email || '',
-            full_name: initialName,
-            role: initialRole,
-            is_synced: true,
-            is_online: document.visibilityState === 'visible' && !document.hidden,
-            last_connection: new Date().toISOString()
-          };
-          if (user.photoURL) {
-            newProfile.photo_url = user.photoURL;
-          }
-          
-          updateCachedProfile(newProfile);
-
-          if (typeof navigator !== 'undefined' && navigator.onLine) {
-            try {
-              await setDoc(profileRef, newProfile);
-            } catch (err) {
-              console.warn('Could not write profile to remote:', err);
-            }
-          }
-        } else {
-          // Update online status and metadata immediately based on visibility
-          if (document.visibilityState === 'visible' && !document.hidden) {
-            await updatePresence(true);
-          }
+        // Update online status immediately if tab is visible and online
+        if (typeof navigator !== 'undefined' && navigator.onLine && document.visibilityState === 'visible' && !document.hidden) {
+          updatePresence(true).catch(() => {});
         }
 
         // Live heartbeat every 4 seconds while user is actively looking at the app
@@ -270,8 +236,6 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Realtime whitelist/authorization listener for non-admin accounts
         let unsubscribeAllowedEmail: (() => void) | undefined;
-        const userEmailLower = user.email ? user.email.toLowerCase().trim() : '';
-        const isAdminEmail = isMasterAdminEmail(userEmailLower);
 
         if (!isAdminEmail) {
           if (!userEmailLower) {
@@ -282,7 +246,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           } else {
             const allowedDocRef = doc(db, 'allowed_emails', userEmailLower);
             unsubscribeAllowedEmail = onSnapshot(allowedDocRef, (allowedSnap) => {
-              // Si no hay red o el snapshot no es definitivo del servidor, no revocar
+              // Si no hay red o el snapshot es de caché no definitivo, no revocar
               if (typeof navigator !== 'undefined' && !navigator.onLine) {
                 return;
               }
@@ -319,7 +283,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }
         }
 
-        // Listen to profile changes
+        // Listen to profile changes directly without blocking getDoc
         unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
           if (docSnap.exists()) {
             const data = docSnap.data() as Profile;
@@ -336,19 +300,47 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
             }
             
             updateCachedProfile(data);
+            setLoading(false);
           } else {
-            // Only force logout if confirmed by server online, NOT when offline or from unconfirmed cache
-            const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
             const isSnapshotFromCache = !!(docSnap as any)?.metadata?.fromCache;
-            if (!isAdminEmail && !isOfflineNow && !isSnapshotFromCache) {
-              console.warn('[Security] Profile document was deleted. Forcing logout.');
-              sessionStorage.setItem('auth_revoked_reason', 'Tu perfil de usuario fue eliminado del sistema.');
-              updateCachedProfile(null);
-              signOut(auth).catch((e) => console.error('Sign out error:', e));
-              return;
+            const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+
+            // If server confirms doc doesn't exist, create initial profile
+            if (!isSnapshotFromCache && !isOfflineNow) {
+              let initialRole: 'admin' | 'operator' = isAdminEmail ? 'admin' : 'operator';
+              let initialName = user.displayName || user.email?.split('@')[0] || (isAdminEmail ? 'Administrador' : 'Operador');
+
+              try {
+                const allowedDoc = await getDoc(doc(db, 'allowed_emails', userEmailLower));
+                if (allowedDoc.exists()) {
+                  const allowedData = allowedDoc.data();
+                  if (allowedData.name) initialName = allowedData.name;
+                  if (allowedData.role === 'admin') initialRole = 'admin';
+                }
+              } catch (e) {
+                console.warn('Could not read allowed_emails for initial profile:', e);
+              }
+
+              const newProfile: Profile = {
+                id: user.uid,
+                email: user.email || '',
+                full_name: initialName,
+                role: initialRole,
+                is_synced: true,
+                is_online: document.visibilityState === 'visible' && !document.hidden,
+                last_connection: new Date().toISOString()
+              };
+              if (user.photoURL) {
+                newProfile.photo_url = user.photoURL;
+              }
+              
+              updateCachedProfile(newProfile);
+              setDoc(profileRef, newProfile).catch((err) => {
+                console.warn('Could not write new profile to remote:', err);
+              });
             }
+            setLoading(false);
           }
-          setLoading(false);
         }, (err) => {
           console.warn('Profile snapshot notice (continuing with cached profile if offline):', err);
           setLoading(false);
@@ -373,7 +365,13 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           unsubscribeProfile();
           unsubscribeProfile = undefined;
         }
-        updateCachedProfile(null);
+
+        // CRITICAL: Do not clear profile cache when offline or if cached auth session exists
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+        const hasCachedAuth = typeof window !== 'undefined' && !!localStorage.getItem('cached_auth_user');
+        if (!isOffline && !hasCachedAuth) {
+          updateCachedProfile(null);
+        }
         setLoading(false);
       }
     });

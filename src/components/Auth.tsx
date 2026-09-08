@@ -68,7 +68,7 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
 }
 
 export const Auth: React.FC = () => {
-  const { profile } = useProfile();
+  const { profile, logout: profileLogout } = useProfile();
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
   const [editName, setEditName] = useState('');
@@ -455,15 +455,22 @@ export const Auth: React.FC = () => {
     }
   };
 
-  const logout = () => {
-    signOut(auth);
+  const logout = async () => {
     setIsDropdownOpen(false);
+    try {
+      localStorage.removeItem('cached_auth_user');
+      localStorage.removeItem('cached_user_profile');
+    } catch {}
+    await profileLogout();
   };
 
-  if (auth.currentUser) {
-    const userPhoto = profile?.photo_url || auth.currentUser.photoURL;
-    const userName = profile?.full_name || auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'Usuario';
-    const userEmail = auth.currentUser.email;
+  const cachedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || 'null') : null;
+  const effectiveUser = auth.currentUser || cachedUser;
+
+  if (effectiveUser) {
+    const userPhoto = profile?.photo_url || effectiveUser.photoURL;
+    const userName = profile?.full_name || effectiveUser.displayName || effectiveUser.email?.split('@')[0] || 'Usuario';
+    const userEmail = effectiveUser.email;
 
     return (
       <div className="relative z-50">
