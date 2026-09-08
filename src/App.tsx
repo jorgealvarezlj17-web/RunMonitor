@@ -21,7 +21,6 @@ import { format } from 'date-fns';
 import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
 import { AutoReportGenerator } from './components/AutoReportGenerator';
-import { OfflineIndicator } from './components/OfflineIndicator';
 
 const APP_VERSION = "1.2.0";
 
@@ -226,7 +225,6 @@ export default function App() {
   return (
     <ErrorBoundary>
       <UpdateBanner />
-      <OfflineIndicator />
       {user && <AutoReportGenerator />}
       <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
         {!user ? (
