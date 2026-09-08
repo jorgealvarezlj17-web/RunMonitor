@@ -464,8 +464,18 @@ export const Auth: React.FC = () => {
     await profileLogout();
   };
 
-  const cachedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || 'null') : null;
-  const effectiveUser = auth.currentUser || cachedUser;
+  const getCachedUser = () => {
+    try {
+      const item = localStorage.getItem('cached_auth_user');
+      if (!item || item === 'undefined' || item === 'null') return null;
+      return JSON.parse(item);
+    } catch {
+      return null;
+    }
+  };
+
+  const cachedUser = typeof window !== 'undefined' ? getCachedUser() : null;
+  const effectiveUser = auth.currentUser || (profile ? cachedUser : null);
 
   if (effectiveUser) {
     const userPhoto = profile?.photo_url || effectiveUser.photoURL;

@@ -16,7 +16,10 @@ export default defineConfig(({mode}) => {
         workbox: {
           globPatterns: ['**/*.{js,css,html,ico,png,svg,jpg}'],
           navigateFallback: 'index.html',
-          navigateFallbackDenylist: [/^\/api\//]
+          navigateFallbackDenylist: [/^\/api\//, /\.[a-zA-Z0-9]+$/],
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true
         },
         manifest: {
           name: 'Run Monitor',

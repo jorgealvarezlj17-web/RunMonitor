@@ -393,7 +393,17 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
 
   const [showPowerPrompt, setShowPowerPrompt] = useState(false);
 
-  const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || '{}')?.uid : null);
+  const getSafeCachedUid = () => {
+    try {
+      const item = localStorage.getItem('cached_auth_user');
+      if (!item || item === 'undefined' || item === 'null') return null;
+      return JSON.parse(item)?.uid || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? getSafeCachedUid() : null);
 
   const toggleStatus = async (reason?: string) => {
     if (isReadOnly || isProcessing || !currentUid || equipment.disabled) return;

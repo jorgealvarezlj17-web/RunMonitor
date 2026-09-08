@@ -906,7 +906,17 @@ export const EquipmentList: React.FC = () => {
   const executeToggle = async (item: Equipment, reason?: string, registerPowerRestored: boolean = false) => {
     setProcessingId(item.id);
     
-    const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('cached_auth_user') || '{}')?.uid : null);
+    const getSafeCachedUid = () => {
+      try {
+        const item = localStorage.getItem('cached_auth_user');
+        if (!item || item === 'undefined' || item === 'null') return null;
+        return JSON.parse(item)?.uid || null;
+      } catch {
+        return null;
+      }
+    };
+
+    const currentUid = auth.currentUser?.uid || profile?.id || (typeof window !== 'undefined' ? getSafeCachedUid() : null);
 
     if (!currentUid) {
       setProcessingId(null);
