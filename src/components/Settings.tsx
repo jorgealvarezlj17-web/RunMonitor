@@ -744,21 +744,21 @@ export const Settings: React.FC = () => {
       )}
 
       {/* Modern Segmented Navigation Tabs */}
-      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 shadow-xs">
+      <div className="bg-slate-100/90 p-1.5 rounded-2xl border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-1.5 shadow-xs">
         <button
           type="button"
           onClick={() => {
             sounds.playClick();
             setActiveTab('schedule');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'schedule'
               ? 'bg-white text-cyan-700 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Clock size={16} className={activeTab === 'schedule' ? 'text-cyan-600' : 'text-slate-400'} />
-          <span>Horarios de Corte</span>
+          <Clock size={16} className={activeTab === 'schedule' ? 'text-cyan-600 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Horarios</span>
         </button>
 
         <button
@@ -767,14 +767,14 @@ export const Settings: React.FC = () => {
             sounds.playClick();
             setActiveTab('whatsapp');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'whatsapp'
               ? 'bg-white text-emerald-700 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <MessageSquare size={16} className={activeTab === 'whatsapp' ? 'text-emerald-600' : 'text-slate-400'} />
-          <span>WhatsApp API</span>
+          <MessageSquare size={16} className={activeTab === 'whatsapp' ? 'text-emerald-600 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">WhatsApp</span>
         </button>
 
         <button
@@ -783,14 +783,14 @@ export const Settings: React.FC = () => {
             sounds.playClick();
             setActiveTab('telegram');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'telegram'
               ? 'bg-white text-blue-500 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Send size={16} className={activeTab === 'telegram' ? 'text-blue-500' : 'text-slate-400'} />
-          <span>Telegram</span>
+          <Send size={16} className={activeTab === 'telegram' ? 'text-blue-500 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Telegram</span>
         </button>
 
         <button
@@ -799,14 +799,14 @@ export const Settings: React.FC = () => {
             sounds.playClick();
             setActiveTab('backups');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'backups'
               ? 'bg-white text-blue-700 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <Database size={16} className={activeTab === 'backups' ? 'text-blue-600' : 'text-slate-400'} />
-          <span>Respaldo de Mensajes</span>
+          <Database size={16} className={activeTab === 'backups' ? 'text-blue-600 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Respaldos</span>
         </button>
 
         <button
@@ -815,14 +815,14 @@ export const Settings: React.FC = () => {
             sounds.playClick();
             setActiveTab('categories');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'categories'
               ? 'bg-white text-slate-900 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <LayoutGrid size={16} className={activeTab === 'categories' ? 'text-cyan-600' : 'text-slate-400'} />
-          <span>Áreas de Planta</span>
+          <LayoutGrid size={16} className={activeTab === 'categories' ? 'text-cyan-600 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Áreas</span>
         </button>
 
         <button
@@ -831,14 +831,14 @@ export const Settings: React.FC = () => {
             sounds.playClick();
             setActiveTab('system');
           }}
-          className={`py-3 px-3 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-2 ${
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'system'
               ? 'bg-white text-rose-700 shadow-sm border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <ShieldAlert size={16} className={activeTab === 'system' ? 'text-rose-600' : 'text-slate-400'} />
-          <span>Sistema & Peligro</span>
+          <ShieldAlert size={16} className={activeTab === 'system' ? 'text-rose-600 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Sistema</span>
         </button>
       </div>
 
@@ -1042,93 +1042,32 @@ export const Settings: React.FC = () => {
               </div>
             </div>
 
-            {/* Card 2: Envío Automático */}
+            {/* Card 2: Estado del Corte Operativo */}
             <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-slate-100 text-slate-700 rounded-2xl border border-slate-200/60">
-                  <Radio size={22} />
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-cyan-50 text-cyan-700 rounded-2xl border border-cyan-200/60">
+                    <Clock size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Ciclo y Próximo Corte Operativo</h2>
+                    <p className="text-xs text-slate-500 font-medium">Temporizador en tiempo real basado en el horario de corte</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">Envío Automático a WhatsApp</h2>
-                  <p className="text-xs text-slate-500 font-medium">El reporte se genera y envía automáticamente a la Hora de Fin del Corte configurada arriba</p>
-                </div>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-extrabold rounded-full border border-emerald-200/60">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  Cierre a las {config.shiftEndTime || '18:00'}
+                </span>
               </div>
 
-              <div className="space-y-3">
-                <div className="pt-2 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-bold text-slate-800">Activar Reportes Automáticos a WhatsApp</p>
-                    <p className="text-xs text-slate-500 font-medium">El servidor recolectará los eventos, guardará el reporte y lo enviará a WhatsApp exactamente a la hora de fin del turno.</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={config.autoSendWhatsAppEnabled ?? true}
-                      onChange={(e) => setConfig({ ...config, autoSendWhatsAppEnabled: e.target.checked })}
-                      disabled={isReadOnly || !isAdmin}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600 disabled:opacity-50"></div>
-                  </label>
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo Restante para el Corte</p>
+                  <p className="text-2xl font-mono font-black text-slate-900 mt-0.5">{timeRemaining}</p>
                 </div>
-
-                {/* Live Countdown Widget */}
-                <div className="mt-4 p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center font-bold">
-                      <Clock size={20} />
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo Restante para Envío Automático</p>
-                      <p className="text-lg font-mono font-black text-slate-900 mt-0.5">{timeRemaining}</p>
-                    </div>
-                  </div>
-                  <div className="text-right sm:text-right">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-700 text-xs font-extrabold rounded-full border border-emerald-200/60">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                      Hora Cierre: {config.shiftEndTime || '18:00'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Connection Test Section */}
-                <div className="mt-4 p-4 rounded-2xl bg-white border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">Probar Conexión</h4>
-                    <p className="text-xs text-slate-500">Envía un mensaje de prueba para verificar que los bots estén funcionando.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleTestGlobalWhatsApp}
-                      disabled={testingService !== 'none' || !isAdmin || isReadOnly}
-                      className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold rounded-xl transition-all disabled:opacity-50"
-                    >
-                      {testingService === 'whatsapp' ? <Loader2 size={16} className="animate-spin" /> : <MessageSquare size={16} />}
-                      <span>Probar WhatsApp</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleTestGlobalTelegram}
-                      disabled={testingService !== 'none' || !isAdmin || isReadOnly}
-                      className="flex-shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-extrabold rounded-xl transition-all disabled:opacity-50"
-                    >
-                      {testingService === 'telegram' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                      <span>Probar Telegram</span>
-                    </button>
-                  </div>
-                </div>
-                {testResult !== 'idle' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className={`mt-2 p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
-                      testResult === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
-                    }`}
-                  >
-                    {testMessage}
-                  </motion.div>
-                )}
+                <p className="text-xs text-slate-500 max-w-sm text-center sm:text-right">
+                  Al completarse este ciclo, el sistema genera el corte de turno y envía las notificaciones a los canales configurados.
+                </p>
               </div>
             </div>
 
@@ -1148,7 +1087,7 @@ export const Settings: React.FC = () => {
                   ) : (
                     <Save size={18} />
                   )}
-                  <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios'}</span>
+                  <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Horarios de Corte'}</span>
                 </button>
               </div>
             )}
@@ -1156,80 +1095,7 @@ export const Settings: React.FC = () => {
         )}
 
         {/* =================================================================== */}
-        {/* TAB: TELEGRAM INTEGRATION                                           */}
-        {/* =================================================================== */}
-        {activeTab === 'telegram' && (
-          <motion.div
-            key="tab-telegram"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.18 }}
-            className="space-y-6"
-          >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center border border-blue-200 shadow-sm">
-                    <Send className="text-blue-600" size={24} />
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">Integración con Telegram (Oficial)</h2>
-                    <p className="text-xs text-slate-500 font-medium">Conexión 100% estable y gratuita para reportes.</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-4 text-xs text-blue-900 flex items-start gap-2.5">
-                <span className="text-blue-700 font-black">ℹ️</span>
-                <div className="space-y-1">
-                  <p className="font-bold">¿Cómo configurar Telegram?</p>
-                  <ol className="list-decimal pl-4 space-y-1 mt-1 opacity-90">
-                    <li>Abre Telegram y busca <strong>@BotFather</strong>.</li>
-                    <li>Mándale el comando <strong>/newbot</strong> y sigue los pasos para crear un bot.</li>
-                    <li>Copia el <strong>Token HTTP API</strong> que te dará y pégalo abajo.</li>
-                    <li>Agrega tu nuevo bot al grupo de tu empresa y envíale un mensaje cualquiera.</li>
-                    <li>Copia el <strong>Chat ID</strong> de ese grupo (puedes usar un bot como @RawDataBot para saber el ID del grupo, que suele empezar con un guión, ej: -100123456789).</li>
-                  </ol>
-                </div>
-              </div>
-
-              <div className="space-y-4 pt-2 border-t border-slate-100">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Token del Bot (HTTP API)
-                  </label>
-                  <input
-                    type="password"
-                    value={config.telegramBotToken || ''}
-                    onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
-                    disabled={isReadOnly || !isAdmin}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
-                    placeholder="Ej: 1234567890:ABCdefGhIjkLmnOpQRstuVWXyz"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                    Chat ID (Grupo de Destino)
-                  </label>
-                  <input
-                    type="text"
-                    value={config.telegramChatId || ''}
-                    onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
-                    disabled={isReadOnly || !isAdmin}
-                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
-                    placeholder="Ej: -100123456789"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1.5">Asegúrate de agregar tu bot a este grupo y darle permisos para escribir.</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
-
-        {/* =================================================================== */}
-        {/* TAB: WHATSAPP & GREEN API INTEGRATION                             */}
+        {/* TAB 2: WHATSAPP INTEGRATION                                         */}
         {/* =================================================================== */}
         {activeTab === 'whatsapp' && (
           <motion.div
@@ -1240,80 +1106,103 @@ export const Settings: React.FC = () => {
             transition={{ duration: 0.18 }}
             className="space-y-6"
           >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60">
-                    <MessageSquare size={22} />
+            {/* Card 1: Switch de Envío Automático a WhatsApp */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3">
+                  <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60 shrink-0">
+                    <Radio size={22} />
                   </div>
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">Integración de WhatsApp (Green API / Webhook)</h2>
-                    <p className="text-xs text-slate-500 font-medium">Conexión directa para el envío de reportes y notificaciones</p>
+                    <h2 className="text-lg font-bold text-slate-900">Envío Automático a WhatsApp</h2>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      El reporte diario se genera y se envía automáticamente a la Hora de Fin ({config.shiftEndTime || '18:00'})
+                    </p>
                   </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0 self-end sm:self-center">
+                  <input
+                    type="checkbox"
+                    checked={config.autoSendWhatsAppEnabled ?? true}
+                    onChange={(e) => setConfig({ ...config, autoSendWhatsAppEnabled: e.target.checked })}
+                    disabled={isReadOnly || !isAdmin}
+                    className="sr-only peer"
+                  />
+                  <div className="w-12 h-6.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600 disabled:opacity-50"></div>
+                </label>
+              </div>
+            </div>
+
+            {/* Card 2: Configuración del Proveedor y Destino */}
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-emerald-50 text-emerald-600 rounded-2xl border border-emerald-200/60">
+                  <MessageSquare size={22} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Configuración de Conexión WhatsApp</h2>
+                  <p className="text-xs text-slate-500 font-medium">Proveedor de API y destino para los reportes de turno</p>
                 </div>
               </div>
 
-              {/* Provider Selector */}
-              <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setConfig({ ...config, whatsappProvider: 'render_baileys' });
-                  }}
-                  disabled={isReadOnly || !isAdmin}
-                  className={`py-3 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
-                    (config.whatsappProvider || 'render_baileys') === 'render_baileys'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span>Render Baileys API</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setConfig({ ...config, whatsappProvider: 'greenapi' });
-                  }}
-                  disabled={isReadOnly || !isAdmin}
-                  className={`py-3 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
-                    config.whatsappProvider === 'greenapi'
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span>Green API</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    sounds.playClick();
-                    setConfig({ ...config, whatsappProvider: 'custom' });
-                  }}
-                  disabled={isReadOnly || !isAdmin}
-                  className={`py-3 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
-                    config.whatsappProvider === 'custom'
-                      ? 'bg-cyan-600 text-white shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <span>API Genérica / Webhook</span>
-                </button>
+              {/* Selector de Proveedor */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                  Proveedor de Servicio
+                </label>
+                <div className="bg-slate-100 p-1.5 rounded-2xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setConfig({ ...config, whatsappProvider: 'render_baileys' });
+                    }}
+                    disabled={isReadOnly || !isAdmin}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                      (config.whatsappProvider || 'render_baileys') === 'render_baileys'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Render Baileys API</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setConfig({ ...config, whatsappProvider: 'greenapi' });
+                    }}
+                    disabled={isReadOnly || !isAdmin}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                      config.whatsappProvider === 'greenapi'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>Green API</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      sounds.playClick();
+                      setConfig({ ...config, whatsappProvider: 'custom' });
+                    }}
+                    disabled={isReadOnly || !isAdmin}
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-2 ${
+                      config.whatsappProvider === 'custom'
+                        ? 'bg-cyan-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>API Genérica / Webhook</span>
+                  </button>
+                </div>
               </div>
 
+              {/* Configuración según Proveedor */}
               {(config.whatsappProvider || 'render_baileys') === 'render_baileys' ? (
                 <div className="space-y-4">
-                  <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-2.5">
-                    <span className="text-emerald-700 font-black">🚀</span>
-                    <div>
-                      <p className="font-bold">Servidor Render Baileys API Vinculado</p>
-                      <p className="mt-0.5 text-emerald-800">
-                        Envío de mensajes directo a tu API en Render mediante <strong>POST JSON</strong> (sin necesidad de token).
-                      </p>
-                    </div>
-                  </div>
-
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
                       URL Endpoint del Servidor Render
@@ -1323,21 +1212,20 @@ export const Settings: React.FC = () => {
                       value={config.whatsappApiUrl || 'https://bot-whatsapp-baileys-jpyb.onrender.com/send-message'}
                       onChange={(e) => setConfig({ ...config, whatsappApiUrl: e.target.value })}
                       disabled={isReadOnly || !isAdmin}
-                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
+                      className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-xs sm:text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
                       placeholder="https://bot-whatsapp-baileys-jpyb.onrender.com/send-message"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
-                      Tipo de Destino para Notificaciones
+                      Tipo de Destino
                     </label>
                     <div className="grid grid-cols-2 gap-2 mb-3">
                       <button
                         type="button"
                         onClick={() => {
                           sounds.playClick();
-                          // Switch to individual phone if current is group or default
                           const currentVal = config.whatsappGroupId || config.greenApiChatId || '';
                           const newPhone = currentVal.includes('@g.us') ? '584127653247' : (currentVal || '584127653247');
                           setConfig({ ...config, whatsappGroupId: newPhone, greenApiChatId: newPhone });
@@ -1357,7 +1245,6 @@ export const Settings: React.FC = () => {
                         type="button"
                         onClick={() => {
                           sounds.playClick();
-                          // Switch to group JID
                           const currentVal = config.whatsappGroupId || config.greenApiChatId || '';
                           const newGroup = currentVal.includes('@g.us') ? currentVal : '120363427690312638@g.us';
                           setConfig({ ...config, whatsappGroupId: newGroup, greenApiChatId: newGroup });
@@ -1376,9 +1263,21 @@ export const Settings: React.FC = () => {
 
                     {(config.whatsappGroupId || config.greenApiChatId || '').includes('@g.us') ? (
                       <div className="space-y-3">
-                        <label className="block text-xs font-semibold text-slate-600">
-                          ID del Grupo de WhatsApp (JID)
-                        </label>
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-slate-600">
+                            ID del Grupo de WhatsApp (JID)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={handleFetchWhatsAppGroups}
+                            disabled={isLoadingGroups || isReadOnly || !isAdmin}
+                            className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-emerald-300 shadow-xs transition-all disabled:opacity-50"
+                          >
+                            {isLoadingGroups ? <Loader2 size={13} className="animate-spin text-emerald-600" /> : <RefreshCw size={13} />}
+                            <span>{isLoadingGroups ? 'Buscando...' : 'Detectar Grupos'}</span>
+                          </button>
+                        </div>
+
                         <input
                           type="text"
                           value={config.whatsappGroupId || config.greenApiChatId || ''}
@@ -1388,109 +1287,41 @@ export const Settings: React.FC = () => {
                           placeholder="Ej: 120363427690312638@g.us"
                         />
 
-                        <div className="p-3 bg-slate-100/80 rounded-xl border border-slate-200/80 flex flex-col gap-2.5">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[11px] font-bold text-slate-700 flex items-center gap-1.5">
-                              <span>💬</span> Grupos detectados en tu WhatsApp:
-                            </p>
-                            <button
-                              type="button"
-                              onClick={handleFetchWhatsAppGroups}
-                              disabled={isLoadingGroups || isReadOnly || !isAdmin}
-                              className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 bg-white px-3 py-1.5 rounded-lg border border-emerald-300 shadow-sm transition-all disabled:opacity-50 active:scale-95"
-                            >
-                              {isLoadingGroups ? <Loader2 size={13} className="animate-spin text-emerald-600" /> : <RefreshCw size={13} />}
-                              <span>{isLoadingGroups ? 'Cargando grupos...' : 'Obtener/Actualizar Grupos'}</span>
-                            </button>
+                        {groupLoadError && (
+                          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]">
+                            ⚠️ {groupLoadError}
                           </div>
+                        )}
 
-                          {groupLoadError && (
-                            <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]">
-                              ⚠️ {groupLoadError}
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-1 gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                sounds.playClick();
-                                setConfig({ ...config, whatsappGroupId: '120363427690312638@g.us', greenApiChatId: '120363427690312638@g.us' });
-                              }}
-                              className={`text-left px-3 py-2.5 rounded-lg border text-xs font-mono transition-all flex items-center justify-between ${
-                                (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
-                                  ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
-                                  : 'bg-white text-emerald-950 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2 truncate">
-                                <span>👥</span>
-                                <div className="truncate">
-                                  <p className="font-bold text-xs truncate">Grupo Aquanova</p>
-                                  <p className="text-[10px] font-mono opacity-80">120363427690312638@g.us</p>
-                                </div>
-                              </div>
-                              <span className={`text-[10px] shrink-0 font-sans ml-2 font-bold px-2 py-0.5 rounded ${
-                                (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
-                                  ? 'bg-emerald-700 text-white'
-                                  : 'bg-slate-100 text-slate-700'
-                              }`}>
-                                {(config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us') ? '✓ Seleccionado' : 'Seleccionar'}
-                              </span>
-                            </button>
-
-                            {availableGroups.filter(Boolean).map((grp: any) => {
-                              const grpId = grp.id || grp.chatId || grp.groupId || '';
-                              if (grpId === '120363427690312638@g.us') return null; // Already shown above
-                              const isSelected = config.greenApiChatId === grpId || config.whatsappGroupId === grpId;
-                              return (
-                                <button
-                                  key={grpId || grp.name || Math.random().toString()}
-                                  type="button"
-                                  onClick={() => {
-                                    sounds.playClick();
-                                    setConfig({ ...config, greenApiChatId: grpId, whatsappGroupId: grpId });
-                                  }}
-                                  className={`w-full text-left p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all ${
-                                    isSelected
-                                      ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
-                                      : 'bg-white text-slate-800 border-slate-200 hover:bg-emerald-50'
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 truncate">
-                                    <span>👥</span>
-                                    <div className="truncate">
-                                      <p className="font-bold truncate">{grp.name || 'Grupo sin nombre'}</p>
-                                      <p className="text-[10px] font-mono opacity-75">{grpId}</p>
-                                    </div>
-                                  </div>
-                                  <span className={`text-[10px] font-mono shrink-0 ml-2 px-2 py-0.5 rounded ${
-                                    isSelected ? 'bg-emerald-700 text-white font-bold' : 'bg-slate-100 text-slate-700'
-                                  }`}>
-                                    {isSelected ? '✓ Seleccionado' : 'Seleccionar'}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* Direct Confirm & Save button */}
-                        <div className="pt-2">
+                        {/* Selector rápido de Grupo Aquanova */}
+                        <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80">
                           <button
                             type="button"
-                            onClick={handleSaveConfig}
-                            disabled={isSavingConfig || isReadOnly || !isAdmin}
-                            className="w-full py-3 px-4 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all shadow-md shadow-emerald-600/20 text-xs flex items-center justify-center gap-2 disabled:opacity-50"
+                            onClick={() => {
+                              sounds.playClick();
+                              setConfig({ ...config, whatsappGroupId: '120363427690312638@g.us', greenApiChatId: '120363427690312638@g.us' });
+                            }}
+                            className={`w-full text-left px-3 py-2 rounded-lg border text-xs font-mono transition-all flex items-center justify-between ${
+                              (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
+                                ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-xs'
+                                : 'bg-white text-slate-800 border-slate-200 hover:border-emerald-500 hover:bg-emerald-50/50'
+                            }`}
                           >
-                            {isSavingConfig ? <Loader2 className="animate-spin" size={16} /> : <Save size={16} />}
-                            <span>Confirmar y Guardar Grupo Seleccionado</span>
+                            <div className="flex items-center gap-2 truncate">
+                              <span>👥</span>
+                              <div className="truncate">
+                                <p className="font-bold text-xs truncate">Grupo Aquanova</p>
+                                <p className="text-[10px] font-mono opacity-80">120363427690312638@g.us</p>
+                              </div>
+                            </div>
+                            <span className={`text-[10px] shrink-0 font-sans ml-2 font-bold px-2 py-0.5 rounded ${
+                              (config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us')
+                                ? 'bg-emerald-700 text-white'
+                                : 'bg-slate-100 text-slate-700'
+                            }`}>
+                              {(config.whatsappGroupId === '120363427690312638@g.us' || config.greenApiChatId === '120363427690312638@g.us') ? '✓ Seleccionado' : 'Seleccionar'}
+                            </span>
                           </button>
-                          {saveStatus === 'success' && (
-                            <p className="text-xs text-emerald-600 font-bold text-center mt-1.5 flex items-center justify-center gap-1">
-                              ✓ Grupo guardado y confirmado para el envío de reportes
-                            </p>
-                          )}
                         </div>
                       </div>
                     ) : (
@@ -1507,7 +1338,7 @@ export const Settings: React.FC = () => {
                           placeholder="Ej: 584127653247"
                         />
                         <p className="text-[11px] text-slate-500">
-                          Formato: Código de país + número sin espacios ni guiones (ej: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">584127653247</code>).
+                          Código de país + número sin espacios ni guiones (ej: <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-800">584127653247</code>).
                         </p>
                       </div>
                     )}
@@ -1515,13 +1346,6 @@ export const Settings: React.FC = () => {
                 </div>
               ) : config.whatsappProvider === 'greenapi' ? (
                 <div className="space-y-4">
-                  <div className="bg-emerald-50/70 border border-emerald-200/70 rounded-2xl p-4 text-xs text-emerald-900 flex items-start gap-2.5">
-                    <span className="text-emerald-700 font-black">💡</span>
-                    <span>
-                      Ingresa tu <strong>IdInstance</strong> y <strong>ApiTokenInstance</strong> de tu consola de Green API (green-api.com) para enviar mensajes al instante.
-                    </span>
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
@@ -1553,21 +1377,9 @@ export const Settings: React.FC = () => {
                   </div>
 
                   <div>
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-1.5">
-                      <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider">
-                        Destino (ID del Grupo o Teléfono)
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleFetchWhatsAppGroups}
-                        disabled={isLoadingGroups || isReadOnly || !isAdmin}
-                        className="text-xs font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1.5 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200 transition-all disabled:opacity-50 self-start sm:self-auto"
-                      >
-                        {isLoadingGroups ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                        <span>Buscar grupos en WhatsApp</span>
-                      </button>
-                    </div>
-
+                    <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                      Destino (ID del Grupo o Teléfono)
+                    </label>
                     <input
                       type="text"
                       value={config.greenApiChatId || ''}
@@ -1576,51 +1388,6 @@ export const Settings: React.FC = () => {
                       className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all disabled:opacity-50"
                       placeholder="Ej: 120363427690312638@g.us"
                     />
-
-                    {/* WhatsApp Groups List Found from Green API */}
-                    {availableGroups.length > 0 && (
-                      <div className="mt-3 p-4 bg-emerald-50/50 border border-emerald-200 rounded-2xl space-y-2.5">
-                        <p className="text-xs font-bold text-emerald-950 flex items-center gap-2">
-                          <Users size={15} className="text-emerald-600" />
-                          Grupos encontrados (Toca para seleccionar):
-                        </p>
-                        <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar pr-1">
-                          {availableGroups.filter(Boolean).map((grp: any) => {
-                            const grpId = grp.id || grp.chatId || grp.groupId || '';
-                            const isSelected = config.greenApiChatId === grpId || config.whatsappGroupId === grpId;
-                            return (
-                              <button
-                                key={grpId || grp.name || Math.random().toString()}
-                                type="button"
-                                onClick={() => {
-                                  sounds.playClick();
-                                  setConfig({ ...config, greenApiChatId: grpId, whatsappGroupId: grpId });
-                                }}
-                                className={`w-full text-left p-2.5 rounded-xl border text-xs flex items-center justify-between transition-all ${
-                                  isSelected
-                                    ? 'bg-emerald-600 text-white border-emerald-600 font-bold shadow-sm'
-                                    : 'bg-white text-slate-800 border-slate-200 hover:bg-emerald-50 hover:border-emerald-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2 truncate">
-                                  <Users size={14} className={isSelected ? 'text-white' : 'text-emerald-600'} />
-                                  <span className="truncate">{grp.name || grpId}</span>
-                                </div>
-                                <span className={`text-[10px] font-mono shrink-0 ml-2 ${isSelected ? 'text-emerald-100' : 'text-slate-400'}`}>
-                                  {isSelected ? '✓ Seleccionado' : 'Elegir'}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {groupLoadError && (
-                      <p className="text-xs text-amber-700 mt-1.5 flex items-center gap-1">
-                        <AlertTriangle size={13} /> {groupLoadError}
-                      </p>
-                    )}
                   </div>
                 </div>
               ) : (
@@ -1681,15 +1448,15 @@ export const Settings: React.FC = () => {
                 </div>
               )}
 
-              {/* Buttons */}
+              {/* Action Buttons */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                 <button
                   type="button"
                   onClick={handleTestWhatsApp}
                   disabled={isTestingWhatsApp || isReadOnly || !isAdmin}
-                  className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-emerald-50 text-emerald-800 font-extrabold hover:bg-emerald-100 border border-emerald-200 transition-all text-sm disabled:opacity-50"
+                  className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-emerald-50 text-emerald-800 font-extrabold hover:bg-emerald-100 border border-emerald-200 transition-all text-xs disabled:opacity-50"
                 >
-                  {isTestingWhatsApp ? <Loader2 className="animate-spin" size={18} /> : <MessageSquare size={18} />}
+                  {isTestingWhatsApp ? <Loader2 className="animate-spin" size={16} /> : <MessageSquare size={16} />}
                   <span>Probar Conexión WhatsApp</span>
                 </button>
 
@@ -1698,16 +1465,127 @@ export const Settings: React.FC = () => {
                     type="button"
                     onClick={handleSaveConfig}
                     disabled={isSavingConfig}
-                    className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-cyan-600 text-white font-extrabold hover:bg-cyan-700 active:scale-[0.99] transition-all shadow-md shadow-cyan-500/20 text-sm disabled:opacity-50"
+                    className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-emerald-600 text-white font-extrabold hover:bg-emerald-700 active:scale-[0.99] transition-all shadow-md shadow-emerald-500/20 text-xs disabled:opacity-50"
                   >
                     {isSavingConfig ? (
-                      <Loader2 className="animate-spin" size={18} />
+                      <Loader2 className="animate-spin" size={16} />
                     ) : saveStatus === 'success' ? (
-                      <CheckCircle2 size={18} />
+                      <CheckCircle2 size={16} />
                     ) : (
-                      <Save size={18} />
+                      <Save size={16} />
                     )}
-                    <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios'}</span>
+                    <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios de WhatsApp'}</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB 3: TELEGRAM INTEGRATION                                         */}
+        {/* =================================================================== */}
+        {activeTab === 'telegram' && (
+          <motion.div
+            key="tab-telegram"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-6"
+          >
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-blue-100 flex items-center justify-center border border-blue-200 shadow-sm shrink-0">
+                    <Send className="text-blue-600" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Integración con Telegram (Oficial)</h2>
+                    <p className="text-xs text-slate-500 font-medium">Conexión directa mediante Bot de Telegram para reportes y alertas</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Guía compacta */}
+              <div className="bg-blue-50/70 border border-blue-200/70 rounded-2xl p-4 text-xs text-blue-900 space-y-2">
+                <p className="font-bold flex items-center gap-1.5">
+                  <span>ℹ️</span> Pasos rápidos de configuración:
+                </p>
+                <ol className="list-decimal pl-5 space-y-1 text-blue-800 text-[11px]">
+                  <li>En Telegram, abre <strong>@BotFather</strong> y usa el comando <code>/newbot</code>.</li>
+                  <li>Pega el <strong>Token HTTP API</strong> que te proporcione en el campo inferior.</li>
+                  <li>Agrega tu nuevo bot al grupo de tu empresa y dale permisos de escritura.</li>
+                  <li>Pega el <strong>Chat ID</strong> del grupo (ej: <code>-100123456789</code>).</li>
+                </ol>
+              </div>
+
+              <div className="space-y-4 pt-1">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Token del Bot (HTTP API)
+                  </label>
+                  <input
+                    type="password"
+                    value={config.telegramBotToken || ''}
+                    onChange={(e) => setConfig({ ...config, telegramBotToken: e.target.value })}
+                    disabled={isReadOnly || !isAdmin}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
+                    placeholder="Ej: 1234567890:ABCdefGhIjkLmnOpQRstuVWXyz"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                    Chat ID (Grupo de Destino)
+                  </label>
+                  <input
+                    type="text"
+                    value={config.telegramChatId || ''}
+                    onChange={(e) => setConfig({ ...config, telegramChatId: e.target.value })}
+                    disabled={isReadOnly || !isAdmin}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 font-mono text-sm focus:ring-2 focus:ring-blue-500/50 outline-none transition-all disabled:opacity-50"
+                    placeholder="Ej: -100123456789"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1.5">El ID de grupos de Telegram suele comenzar con -100.</p>
+                </div>
+              </div>
+
+              {testResult !== 'idle' && testingService === 'telegram' && (
+                <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                  testResult === 'success' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'
+                }`}>
+                  {testMessage}
+                </div>
+              )}
+
+              {/* Botones de Acción */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleTestGlobalTelegram}
+                  disabled={testingService !== 'none' || !isAdmin || isReadOnly}
+                  className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-blue-50 text-blue-700 font-extrabold hover:bg-blue-100 border border-blue-200 transition-all text-xs disabled:opacity-50"
+                >
+                  {testingService === 'telegram' ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  <span>Probar Conexión Telegram</span>
+                </button>
+
+                {isAdmin && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={handleSaveConfig}
+                    disabled={isSavingConfig}
+                    className="flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-blue-600 text-white font-extrabold hover:bg-blue-700 active:scale-[0.99] transition-all shadow-md shadow-blue-500/20 text-xs disabled:opacity-50"
+                  >
+                    {isSavingConfig ? (
+                      <Loader2 className="animate-spin" size={16} />
+                    ) : saveStatus === 'success' ? (
+                      <CheckCircle2 size={16} />
+                    ) : (
+                      <Save size={16} />
+                    )}
+                    <span>{saveStatus === 'success' ? '¡Cambios Guardados!' : 'Guardar Cambios de Telegram'}</span>
                   </button>
                 )}
               </div>
@@ -1797,49 +1675,83 @@ export const Settings: React.FC = () => {
 
               {/* Live Pre-generated Staged Report Card */}
               {stagedBackup && (
-                <div className="p-3.5 bg-amber-50/50 rounded-xl border border-amber-200 text-xs space-y-2.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500 text-white flex items-center gap-1">
-                        ⚡ Borrador en Vivo
-                      </span>
-                      <span className="text-xs text-amber-900 font-medium">
-                        Corte programado: {config.shiftEndTime || '18:00'}
-                      </span>
+                <div className="group relative p-4 bg-emerald-50/60 rounded-xl border border-emerald-200/70 shadow-sm transition-all hover:shadow-md space-y-3">
+                  {/* Header of the note */}
+                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-emerald-200/60 pb-3">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Clock size={15} className="text-emerald-600" />
+                        <h4 className="text-sm font-bold text-slate-800">
+                          Borrador en Vivo
+                        </h4>
+
+                        {/* Indicador de 3 puntos en movimiento suave y constante */}
+                        <div className="flex items-center gap-1 ml-1" title="Actualizándose constantemente en vivo">
+                          {[0, 1, 2].map((i) => (
+                            <motion.span
+                              key={i}
+                              className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"
+                              animate={{
+                                opacity: [0.25, 1, 0.25],
+                                scale: [0.75, 1.25, 0.75],
+                                y: [0, -3.5, 0],
+                              }}
+                              transition={{
+                                duration: 1,
+                                repeat: Infinity,
+                                ease: 'easeInOut',
+                                delay: i * 0.18,
+                              }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1 font-medium">
+                        Corte programado para las {config.shiftEndTime || '18:00'}
+                      </p>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
+                    {/* Action Buttons con la misma discreción y estilo de las notas */}
+                    <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyBackup(stagedBackup)}
+                        className="p-1.5 rounded-lg bg-white/70 hover:bg-white text-slate-600 hover:text-slate-900 transition-colors shadow-sm border border-emerald-200/60"
+                        title="Copiar reporte al portapapeles"
+                      >
+                        {copiedId === stagedBackup.id ? (
+                          <Check size={14} className="text-emerald-600" />
+                        ) : (
+                          <Copy size={14} />
+                        )}
+                      </button>
+
                       <button
                         type="button"
                         onClick={handleSendStagedNow}
                         disabled={resendingId === 'staged_upcoming_report'}
-                        className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs rounded-md transition-colors flex items-center gap-1 disabled:opacity-50"
-                        title="Enviar borrador a WhatsApp inmediatamente"
+                        className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm disabled:opacity-50"
+                        title="Enviar a WhatsApp ahora"
                       >
-                        {resendingId === 'staged_upcoming_report' ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
-                        <span>Enviar Ahora</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleCopyBackup(stagedBackup)}
-                        className="h-7 px-2.5 bg-white border border-amber-200 text-amber-900 hover:bg-amber-100/60 font-medium text-xs rounded-md transition-colors flex items-center gap-1"
-                      >
-                        {copiedId === stagedBackup.id ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
-                        <span>{copiedId === stagedBackup.id ? 'Copiado' : 'Copiar'}</span>
+                        {resendingId === 'staged_upcoming_report' ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <Send size={14} />
+                        )}
                       </button>
                     </div>
                   </div>
 
-                  <div className="bg-slate-900 text-slate-100 p-3 rounded-lg font-mono text-[11px] overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-40 overflow-y-auto">
+                  {/* Note message preview */}
+                  <div className="text-slate-700 text-[13px] whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-scrollbar select-text bg-white/50 p-4 rounded-xl shadow-sm border border-slate-100 font-sans">
                     {stagedBackup.message}
                   </div>
 
                   {resendStatus && resendStatus.id === 'staged_upcoming_report' && (
-                    <div className={`p-2 rounded-lg text-xs font-medium flex items-center gap-1.5 ${
-                      resendStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+                    <div className={`p-2 rounded-lg text-[11px] font-medium flex items-center gap-1.5 ${
+                      resendStatus.success ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
                     }`}>
-                      {resendStatus.success ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                      {resendStatus.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                       <span>{resendStatus.message}</span>
                     </div>
                   )}
@@ -1892,80 +1804,64 @@ export const Settings: React.FC = () => {
                       return (
                         <div
                           key={bk.id}
-                          className="p-3 bg-white rounded-xl border border-slate-200 hover:border-slate-300 transition-colors space-y-2"
+                          className="group relative p-4 bg-yellow-50/60 rounded-xl border border-yellow-200/50 shadow-sm transition-all hover:shadow-md space-y-3"
                         >
-                          {/* Card Top Row */}
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2 text-xs">
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center gap-1 ${
-                                isSuccess 
-                                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                                  : isSaved
-                                    ? 'bg-sky-50 text-sky-700 border border-sky-200'
-                                    : isManual
-                                      ? 'bg-slate-100 text-slate-700 border border-slate-200'
-                                      : 'bg-rose-50 text-rose-700 border border-rose-200'
-                              }`}>
-                                {isSuccess ? <CheckCircle2 size={11} /> : isSaved ? <Database size={11} /> : isManual ? <FileText size={11} /> : <AlertCircle size={11} />}
-                                {isSuccess 
-                                  ? 'Enviado a WhatsApp' 
-                                  : isSaved 
-                                    ? 'Respaldo (WhatsApp Off)' 
-                                    : isManual
-                                      ? 'Corte Manual'
-                                      : 'Falla de WhatsApp'}
-                              </span>
-
-                              <span className="text-slate-500 font-mono text-[11px]">
-                                {formattedDate}
-                              </span>
-
-                              <span className="text-slate-400 text-[11px] hidden sm:inline">•</span>
-
-                              <span className="text-slate-500 text-[11px]">
-                                {bk.recipient}
-                              </span>
+                          {/* Header of the note */}
+                          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 border-b border-yellow-200/50 pb-3">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <FileText size={14} className="text-yellow-600" />
+                                <h4 className="text-sm font-bold text-slate-800">
+                                  {isManual ? 'Reporte Manual' : 'Corte de Turno'}
+                                </h4>
+                                {isSuccess && (
+                                  <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-100/50 px-1.5 py-0.5 rounded">
+                                    <CheckCircle2 size={10} /> Enviado
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 mt-1 font-medium">
+                                {formattedDate} • {bk.recipient}
+                              </p>
                             </div>
 
-                            {/* Small Action Buttons */}
-                            <div className="flex items-center gap-1.5 ml-auto">
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
                               <button
                                 type="button"
                                 onClick={() => handleCopyBackup(bk)}
-                                className="h-6 px-2 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-[11px] transition-colors flex items-center gap-1"
+                                className="p-1.5 rounded-lg bg-white/60 hover:bg-white text-slate-600 hover:text-slate-900 transition-colors shadow-sm border border-yellow-200/50"
                                 title="Copiar reporte al portapapeles"
                               >
                                 {copiedId === bk.id ? (
-                                  <Check size={11} className="text-emerald-600" />
+                                  <Check size={14} className="text-emerald-600" />
                                 ) : (
-                                  <Copy size={11} className="text-slate-500" />
+                                  <Copy size={14} />
                                 )}
-                                <span>{copiedId === bk.id ? 'Copiado' : 'Copiar'}</span>
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() => handleResendBackup(bk)}
                                 disabled={resendingId === bk.id}
-                                className="h-6 px-2 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[11px] transition-colors flex items-center gap-1 disabled:opacity-50"
-                                title="Reenviar este reporte a WhatsApp"
+                                className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors shadow-sm disabled:opacity-50"
+                                title="Reenviar a WhatsApp"
                               >
                                 {resendingId === bk.id ? (
-                                  <Loader2 size={11} className="animate-spin" />
+                                  <Loader2 size={14} className="animate-spin" />
                                 ) : (
-                                  <Send size={11} />
+                                  <Send size={14} />
                                 )}
-                                <span>Reenviar</span>
                               </button>
 
                               {isAdmin && (
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteSingleBackup(bk.id)}
-                                  className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors flex items-center justify-center"
+                                  className="p-1.5 rounded-lg bg-white/60 hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors shadow-sm border border-yellow-200/50"
                                   title="Eliminar registro"
                                 >
-                                  <Trash2 size={12} />
+                                  <Trash2 size={14} />
                                 </button>
                               )}
                             </div>
@@ -1973,23 +1869,23 @@ export const Settings: React.FC = () => {
 
                           {/* Error notice if present */}
                           {bk.error && (
-                            <div className="px-2 py-1 rounded bg-rose-50 border border-rose-200/70 text-rose-700 text-[11px] font-medium flex items-center gap-1.5">
-                              <AlertCircle size={12} className="shrink-0 text-rose-600" />
+                            <div className="px-3 py-2 rounded-lg bg-rose-50/80 border border-rose-200/50 text-rose-700 text-xs font-medium flex items-center gap-1.5">
+                              <AlertCircle size={14} className="shrink-0 text-rose-600" />
                               <span>{bk.error}</span>
                             </div>
                           )}
 
-                          {/* Monospace message preview */}
-                          <div className="bg-slate-900 text-slate-200 p-2.5 rounded-lg font-mono text-[11px] overflow-x-auto border border-slate-800 whitespace-pre-wrap leading-relaxed max-h-32 overflow-y-auto select-all">
+                          {/* Note message preview */}
+                          <div className="text-slate-700 text-[13px] whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto custom-scrollbar select-text bg-white/50 p-4 rounded-xl shadow-sm border border-slate-100 font-sans">
                             {bk.message}
                           </div>
 
-                          {/* Resend status toast/inline */}
+                          {/* Resend status */}
                           {resendStatus && resendStatus.id === bk.id && (
-                            <div className={`p-1.5 rounded-md text-[11px] font-medium flex items-center gap-1.5 ${
-                              resendStatus.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-rose-50 text-rose-800 border border-rose-200'
+                            <div className={`p-2 rounded-lg text-[11px] font-medium flex items-center gap-1.5 ${
+                              resendStatus.success ? 'bg-emerald-50 text-emerald-800' : 'bg-rose-50 text-rose-800'
                             }`}>
-                              {resendStatus.success ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
+                              {resendStatus.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}
                               <span>{resendStatus.message}</span>
                             </div>
                           )}

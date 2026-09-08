@@ -29,6 +29,7 @@ export function AutoReportGenerator() {
   const isExecutingRef = useRef(false);
   const isStagingRef = useRef(false);
   const configLoadedRef = useRef(false);
+  const stagingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const unsubscribeConfig = onSnapshot(doc(db, 'config', 'app_settings'), (docSnap) => {
@@ -272,6 +273,15 @@ export function AutoReportGenerator() {
       maintenanceRecords = maintDoc.data().records || '';
     }
 
+    // Tanks
+    let tanquesAireacion: string[] = [];
+    let tanquesMovimiento: string[] = [];
+    const tanksDoc = await getDoc(doc(db, 'config', 'current_shift_tanks'));
+    if (tanksDoc.exists()) {
+      tanquesAireacion = tanksDoc.data().tanquesAireacion || [];
+      tanquesMovimiento = tanksDoc.data().tanquesMovimiento || [];
+    }
+
     // Equipments iteration
     const catIds = Object.keys(groupedEquipments);
     let hasAnyData = false;
@@ -403,6 +413,17 @@ export function AutoReportGenerator() {
       text += powerEventsText;
     }
     
+    if (tanquesAireacion.length > 0 || tanquesMovimiento.length > 0) {
+      text += `_ESTADO CHAPALETAS / TANQUES:_\n`;
+      if (tanquesAireacion.length > 0) {
+        text += `• Aireación: ${tanquesAireacion.join(', ')}\n`;
+      }
+      if (tanquesMovimiento.length > 0) {
+        text += `• Movimiento: ${tanquesMovimiento.join(', ')}\n`;
+      }
+      text += `━━━━━━━━━━━━━━━━━━━━\n`;
+    }
+    
     if (maintenanceRecords.trim()) {
       text += `_REGISTRO DE MANTENIMIENTO:_\n${maintenanceRecords.trim()}\n`;
       text += `━━━━━━━━━━━━━━━━━━━━\n`;
@@ -418,24 +439,20 @@ export function AutoReportGenerator() {
   // Pre-generate & stage report in real-time
   const stageCurrentReport = async () => {
     if (!configLoadedRef.current || isStagingRef.current) return;
-
     const [endH, endM] = (endTime || '18:00').split(':').map(Number);
     if (isNaN(endH) || isNaN(endM)) return;
-
     const now = new Date();
     let targetEnd = new Date(now);
     targetEnd.setHours(endH, endM, 0, 0);
-
     if (now > targetEnd) {
       targetEnd.setDate(targetEnd.getDate() + 1);
     }
-
     const dateStr = format(targetEnd, 'yyyy-MM-dd');
     const shiftKey = `${endTime}_${dateStr}`;
-
+    
     // Skip staging if already sent for this shiftKey
     if (lastAutoSentShiftKey === shiftKey) return;
-
+    
     try {
       isStagingRef.current = true;
       const reportText = await buildCurrentReportText(targetEnd);
@@ -459,22 +476,30 @@ export function AutoReportGenerator() {
     }
   };
 
+  const requestStageCurrentReport = () => {
+    if (stagingTimeoutRef.current) clearTimeout(stagingTimeoutRef.current);
+    stagingTimeoutRef.current = setTimeout(() => {
+      stageCurrentReport();
+    }, 1500);
+  };
+
   useEffect(() => {
     // Stage immediately
-    stageCurrentReport();
+    requestStageCurrentReport();
 
     // Subscribe to real-time changes in logs, power events, observations, maintenance, equipment
-    const unsubLogs = onSnapshot(collection(db, 'logs'), () => stageCurrentReport());
-    const unsubPower = onSnapshot(collection(db, 'power_events'), () => stageCurrentReport());
-    const unsubObs = onSnapshot(doc(db, 'config', 'current_shift_observations'), () => stageCurrentReport());
-    const unsubMaint = onSnapshot(doc(db, 'config', 'current_shift_maintenance'), () => stageCurrentReport());
-    const unsubEquip = onSnapshot(collection(db, 'equipment'), () => stageCurrentReport());
+    const unsubLogs = onSnapshot(collection(db, 'logs'), () => requestStageCurrentReport());
+    const unsubPower = onSnapshot(collection(db, 'power_events'), () => requestStageCurrentReport());
+    const unsubObs = onSnapshot(doc(db, 'config', 'current_shift_observations'), () => requestStageCurrentReport());
+    const unsubMaint = onSnapshot(doc(db, 'config', 'current_shift_maintenance'), () => requestStageCurrentReport());
+    const unsubEquip = onSnapshot(collection(db, 'equipment'), () => requestStageCurrentReport());
+    const unsubTanks = onSnapshot(doc(db, 'config', 'current_shift_tanks'), () => requestStageCurrentReport());
 
-    const stageInterval = setInterval(() => stageCurrentReport(), 10000);
+    const stageInterval = setInterval(() => requestStageCurrentReport(), 15000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        stageCurrentReport();
+        requestStageCurrentReport();
       }
     };
 
@@ -487,6 +512,7 @@ export function AutoReportGenerator() {
       unsubObs();
       unsubMaint();
       unsubEquip();
+      unsubTanks();
       clearInterval(stageInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleVisibilityChange);

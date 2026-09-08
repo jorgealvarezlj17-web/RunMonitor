@@ -29,8 +29,17 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isOffline = 
+    (typeof navigator !== 'undefined' && !navigator.onLine) ||
+    errMsg.includes('offline') ||
+    errMsg.includes('unavailable') ||
+    errMsg.includes('Failed to get document because the client is offline') ||
+    errMsg.includes('backend') ||
+    errMsg.includes('network');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -47,6 +56,11 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  if (isOffline) {
+    console.warn(`[Firestore Offline Cache] Operación ${operationType} en ${path}: Utilizando datos de la base de datos local.`, errMsg);
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
 }

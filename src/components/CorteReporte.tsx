@@ -813,6 +813,17 @@ export const CorteReporte: React.FC = () => {
         text += powerEventsText;
       }
 
+      if (tanquesAireacion.length > 0 || tanquesMovimiento.length > 0) {
+        text += `_ESTADO CHAPALETAS / TANQUES:_\n`;
+        if (tanquesAireacion.length > 0) {
+          text += `• Aireación: ${tanquesAireacion.join(', ')}\n`;
+        }
+        if (tanquesMovimiento.length > 0) {
+          text += `• Movimiento: ${tanquesMovimiento.join(', ')}\n`;
+        }
+        text += `━━━━━━━━━━━━━━━━━━━━\n`;
+      }
+
       if (maintenanceRecords.trim()) {
         text += `_REGISTRO DE MANTENIMIENTO:_\n${maintenanceRecords.trim()}\n`;
         text += `━━━━━━━━━━━━━━━━━━━━\n`;

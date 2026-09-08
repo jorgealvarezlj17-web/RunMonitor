@@ -21,6 +21,7 @@ import { format } from 'date-fns';
 import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
 import { AutoReportGenerator } from './components/AutoReportGenerator';
+import { OfflineIndicator } from './components/OfflineIndicator';
 
 const APP_VERSION = "1.2.0";
 
@@ -41,22 +42,11 @@ export default function App() {
     }
   }, [profile, activeTab]);
 
-  // Version Control & Cache Busting
+  // Version Control (preserved without unregistering service workers)
   useEffect(() => {
     const storedVersion = localStorage.getItem('app_version');
     if (storedVersion !== APP_VERSION) {
-      console.log(`Updating app version from ${storedVersion} to ${APP_VERSION}`);
       localStorage.setItem('app_version', APP_VERSION);
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          for (const registration of registrations) {
-            registration.unregister();
-          }
-        });
-      }
-      if (storedVersion) {
-        window.location.reload();
-      }
     }
   }, []);
 
@@ -74,7 +64,7 @@ export default function App() {
           }
         }
       } catch (error) {
-        console.error('Error cleaning up admin emails:', error);
+        console.warn('Notice cleaning up admin emails:', error);
       }
     };
     cleanupAdminEmails();
@@ -89,29 +79,26 @@ export default function App() {
           setShiftStartTime(configDoc.data().shiftStartTime || '18:00');
         }
       } catch (error) {
-        console.error('Error fetching config in App:', error);
+        console.warn('Notice fetching config in App (using default or cache):', error);
       }
     };
     fetchConfig();
   }, [user]);
 
-
-
   useEffect(() => {
     let isMounted = true;
 
-    // Fallback timeout for loading state - if Firebase takes too long, 
-    // we show the login screen anyway so the user isn't stuck.
+    // Fast fallback timeout for offline startup
     const timeout = setTimeout(() => {
-      if (isMounted && !authReady) {
-        console.warn('Auth check timed out, showing start button');
-        setAuthReady(true);
-      }
-    }, 6000);
-
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (isMounted) {
-        setUser(user);
+        setAuthReady(true);
+        setLoading(false);
+      }
+    }, 2000);
+
+    const unsubscribe = onAuthStateChanged(auth, (authUser) => {
+      if (isMounted) {
+        setUser(authUser);
         setAuthReady(true);
         setLoading(false);
         clearTimeout(timeout);
@@ -125,7 +112,10 @@ export default function App() {
     };
   }, []); // Empty dependency array ensures this runs only once on mount
 
-  if (loading || (!user && !authReady) || (user && profileLoading)) {
+  // Fast offline readiness: if profile is in cache or offline, do not block the app
+  const isProfileReady = !profileLoading || profile !== null || (typeof navigator !== 'undefined' && !navigator.onLine);
+
+  if (loading || (!user && !authReady) || (user && !isProfileReady)) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 relative overflow-hidden">
         {/* Background glow effects */}
@@ -188,6 +178,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <UpdateBanner />
+      <OfflineIndicator />
       {user && <AutoReportGenerator />}
       <div className="w-full min-h-screen bg-slate-50 text-slate-900 font-sans selection:bg-cyan-500/30 relative overflow-x-hidden">
         {!user ? (
