@@ -4,6 +4,7 @@ import {
   onSnapshot, 
   query, 
   orderBy, 
+  limit,
   doc, 
   getDoc
 } from 'firebase/firestore';
@@ -121,9 +122,10 @@ export const PanelRegistro: React.FC = () => {
     return () => unsub();
   }, []);
 
-  // 4. Real-time Shift Logs & Power Events listeners
+  // 4. Real-time Shift Logs & Power Events listeners (optimized to recent shift items)
   useEffect(() => {
-    const unsubLogs = onSnapshot(collection(db, 'logs'), (snapshot) => {
+    const qLogs = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(200));
+    const unsubLogs = onSnapshot(qLogs, (snapshot) => {
       const items: LogEntry[] = [];
       snapshot.forEach((d) => {
         items.push({ id: d.id, ...d.data() } as LogEntry);
@@ -133,7 +135,8 @@ export const PanelRegistro: React.FC = () => {
       handleFirestoreError(error, OperationType.GET, 'logs');
     });
 
-    const unsubPower = onSnapshot(collection(db, 'power_events'), (snapshot) => {
+    const qPower = query(collection(db, 'power_events'), orderBy('timestamp', 'desc'), limit(60));
+    const unsubPower = onSnapshot(qPower, (snapshot) => {
       const items: PowerEvent[] = [];
       snapshot.forEach((d) => {
         items.push({ id: d.id, ...d.data() } as PowerEvent);

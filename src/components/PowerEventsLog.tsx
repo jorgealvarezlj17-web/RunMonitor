@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, deleteDoc, getDocs, limit } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Zap, Trash2, X, AlertTriangle, Clock, ZapOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -9,15 +9,42 @@ import { handleFirestoreError, OperationType } from '../firestoreUtils';
 export const PowerEventsLog: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [events, setEvents] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [latestEvent, setLatestEvent] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
 
+  // Lightweight status listener: only 1 document
   useEffect(() => {
     if (!auth.currentUser) return;
 
     const q = query(
       collection(db, 'power_events'),
-      orderBy('timestamp', 'asc')
+      orderBy('timestamp', 'desc'),
+      limit(1)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      if (!snapshot.empty) {
+        setLatestEvent({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+      } else {
+        setLatestEvent(null);
+      }
+    }, (error) => {
+      // ignore
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // History list listener: only active when modal is open
+  useEffect(() => {
+    if (!auth.currentUser || !isOpen) return;
+
+    setLoading(true);
+    const q = query(
+      collection(db, 'power_events'),
+      orderBy('timestamp', 'desc'),
+      limit(100)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -33,7 +60,7 @@ export const PowerEventsLog: React.FC = () => {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [isOpen]);
 
   const handleClearHistory = async () => {
     try {
@@ -51,7 +78,7 @@ export const PowerEventsLog: React.FC = () => {
     }
   };
 
-  const currentState = events.length > 0 ? events[events.length - 1].type : 'ok';
+  const currentState = latestEvent ? latestEvent.type : (events.length > 0 ? events[0].type : 'ok');
   const isFalla = currentState === 'falla';
   const isCorte = currentState === 'corte';
 

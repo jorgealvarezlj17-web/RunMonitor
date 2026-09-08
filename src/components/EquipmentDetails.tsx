@@ -99,7 +99,12 @@ const UptimeDisplay: React.FC<{ equipment: Equipment }> = ({ equipment }) => {
   );
 };
 
-export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => void; initialEdit?: boolean }> = ({ equipment, onClose, initialEdit = false }) => {
+export const EquipmentDetails: React.FC<{ 
+  equipment: Equipment; 
+  onClose: () => void; 
+  initialEdit?: boolean;
+  onToggleStatus?: (reason?: string, registerPowerRestored?: boolean) => void;
+}> = ({ equipment, onClose, initialEdit = false, onToggleStatus }) => {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
@@ -417,6 +422,13 @@ export const EquipmentDetails: React.FC<{ equipment: Equipment; onClose: () => v
   };
 
   const executeToggle = async (reason?: string, registerPowerRestored: boolean = false) => {
+    if (onToggleStatus) {
+      onToggleStatus(reason, registerPowerRestored);
+      setShowPowerPrompt(false);
+      setIsProcessing(false);
+      return;
+    }
+
     setIsProcessing(true);
     
     if (!currentUid) {

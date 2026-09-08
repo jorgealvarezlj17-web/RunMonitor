@@ -177,7 +177,7 @@ const CategoryHeader = ({ category, onRename, onDelete }: { category: Category, 
   );
 };
 
-const EquipmentCard = ({ item, isDragging, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction, style, listeners, attributes }: any) => {
+const EquipmentCard = React.memo(({ item, isDragging, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction, style, listeners, attributes }: any) => {
   if (!item) return null;
   const [showNote, setShowNote] = useState(false);
   const [showTurnOffOptions, setShowTurnOffOptions] = useState(false);
@@ -267,22 +267,10 @@ const EquipmentCard = ({ item, isDragging, processingId, toggleStatus, setSelect
   };
 
   return (
-    <motion.div
-      layout
-      initial={false}
-      animate={isDragging ? { 
-        scale: 1, 
-        boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)"
-      } : { 
-        scale: 1, 
-        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)"
-      }}
-      transition={{ 
-        scale: { type: "spring", stiffness: 500, damping: 30 }
-      }}
+    <div
       style={style}
-      className={`bg-white rounded-[1.5rem] shadow-xl border border-slate-200 overflow-hidden transition-colors hover:border-slate-300 flex flex-col h-full relative ${
-        isDragging ? 'ring-2 ring-emerald-500/50 z-50 opacity-90' : ''
+      className={`bg-white rounded-[1.5rem] shadow-xl border border-slate-200 overflow-hidden transition-all hover:border-slate-300 flex flex-col h-full relative ${
+        isDragging ? 'ring-2 ring-emerald-500/50 z-50 opacity-90 shadow-2xl' : ''
       }`}
       onClick={() => {
         if (!isDragging) {
@@ -508,11 +496,11 @@ const EquipmentCard = ({ item, isDragging, processingId, toggleStatus, setSelect
           </div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </div>
   );
-};
+});
 
-const DraggableEquipmentCard = ({ item, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction }: any) => {
+const DraggableEquipmentCard = React.memo(({ item, processingId, toggleStatus, setSelectedEquipment, setIsEditingSelected, setConfirmAction }: any) => {
   if (!item) return null;
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: item.id,
@@ -553,7 +541,7 @@ const DraggableEquipmentCard = ({ item, processingId, toggleStatus, setSelectedE
       />
     </div>
   );
-};
+});
 
 const DroppableSlot = ({ categoryId, order, children }: { categoryId: string | null, order: number, children?: React.ReactNode }) => {
   const { setNodeRef, isOver } = useDroppable({
@@ -949,6 +937,21 @@ export const EquipmentList: React.FC = () => {
       additionalSeconds = Math.max(0, Math.floor((now.toMillis() - startTime) / 1000));
     }
 
+    // Instant optimistic update (0ms UI lag)
+    const previousEquipment = equipment;
+    setEquipment(prev => prev.map(eq => {
+      if (eq.id === item.id) {
+        return {
+          ...eq,
+          status: newStatus,
+          lastTurnedOn: newStatus === 'on' ? now : null,
+          totalUsageTime: (eq.totalUsageTime || 0) + additionalSeconds,
+          lastOffReason: newStatus === 'off' ? (reason || null) : null
+        };
+      }
+      return eq;
+    }));
+
     try {
       const batch = writeBatch(db);
       const equipmentRef = doc(db, 'equipment', item.id);
@@ -996,9 +999,11 @@ export const EquipmentList: React.FC = () => {
       }
 
       batch.commit().catch(error => {
+        setEquipment(previousEquipment);
         handleFirestoreError(error, OperationType.UPDATE, `equipment/${item.id}`);
       });
     } catch (error) {
+      setEquipment(previousEquipment);
       handleFirestoreError(error, OperationType.UPDATE, `equipment/${item.id}`);
     } finally {
       setProcessingId(null);
@@ -1159,6 +1164,10 @@ export const EquipmentList: React.FC = () => {
                   setIsEditingSelected(false);
                 }} 
                 initialEdit={isEditingSelected}
+                onToggleStatus={(reason, registerPowerRestored) => {
+                  const currentEq = equipment.find(e => e.id === selectedEquipment.id) || selectedEquipment;
+                  executeToggle(currentEq, reason, registerPowerRestored);
+                }}
               />
             )}
           </AnimatePresence>

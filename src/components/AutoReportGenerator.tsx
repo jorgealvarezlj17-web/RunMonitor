@@ -95,8 +95,13 @@ export function AutoReportGenerator() {
       equipments.push({ id: docSnap.id, ...docSnap.data() });
     });
 
-    // Fetch all logs once (avoids composite index errors)
-    const allLogsSnap = await getDocs(collection(db, 'logs'));
+    // Fetch recent logs (avoids composite index errors and downloading entire database)
+    const logsQuery = query(
+      collection(db, 'logs'),
+      orderBy('timestamp', 'desc'),
+      limit(200)
+    );
+    const allLogsSnap = await getDocs(logsQuery);
     const allLogs: any[] = [];
     allLogsSnap.forEach(docSnap => {
       allLogs.push({ id: docSnap.id, ...docSnap.data() });
@@ -109,8 +114,13 @@ export function AutoReportGenerator() {
     });
     logs.sort((a, b) => safeToDate(a.timestamp).getTime() - safeToDate(b.timestamp).getTime());
 
-    // Fetch all power events once
-    const allPowerSnap = await getDocs(collection(db, 'power_events'));
+    // Fetch recent power events
+    const powerQuery = query(
+      collection(db, 'power_events'),
+      orderBy('timestamp', 'desc'),
+      limit(60)
+    );
+    const allPowerSnap = await getDocs(powerQuery);
     const allPower: any[] = [];
     allPowerSnap.forEach(docSnap => {
       allPower.push({ id: docSnap.id, ...docSnap.data() });
@@ -476,30 +486,41 @@ export function AutoReportGenerator() {
     }
   };
 
-  const requestStageCurrentReport = () => {
+  const lastStagedTimeRef = useRef<number>(0);
+
+  const requestStageCurrentReport = (delay = 3000) => {
+    if (!autoSendEnabled) return;
     if (stagingTimeoutRef.current) clearTimeout(stagingTimeoutRef.current);
     stagingTimeoutRef.current = setTimeout(() => {
+      lastStagedTimeRef.current = Date.now();
       stageCurrentReport();
-    }, 1500);
+    }, delay);
   };
 
   useEffect(() => {
-    // Stage immediately
-    requestStageCurrentReport();
+    if (!autoSendEnabled) return;
 
-    // Subscribe to real-time changes in logs, power events, observations, maintenance, equipment
-    const unsubLogs = onSnapshot(collection(db, 'logs'), () => requestStageCurrentReport());
-    const unsubPower = onSnapshot(collection(db, 'power_events'), () => requestStageCurrentReport());
-    const unsubObs = onSnapshot(doc(db, 'config', 'current_shift_observations'), () => requestStageCurrentReport());
-    const unsubMaint = onSnapshot(doc(db, 'config', 'current_shift_maintenance'), () => requestStageCurrentReport());
-    const unsubEquip = onSnapshot(collection(db, 'equipment'), () => requestStageCurrentReport());
-    const unsubTanks = onSnapshot(doc(db, 'config', 'current_shift_tanks'), () => requestStageCurrentReport());
+    // Stage initially with slight delay to avoid competing with startup
+    const initialTimer = setTimeout(() => {
+      requestStageCurrentReport(500);
+    }, 2000);
 
-    const stageInterval = setInterval(() => requestStageCurrentReport(), 15000);
+    // Only listen to direct shift metadata changes (observations, maintenance, tanks)
+    const unsubObs = onSnapshot(doc(db, 'config', 'current_shift_observations'), () => requestStageCurrentReport(4000));
+    const unsubMaint = onSnapshot(doc(db, 'config', 'current_shift_maintenance'), () => requestStageCurrentReport(4000));
+    const unsubTanks = onSnapshot(doc(db, 'config', 'current_shift_tanks'), () => requestStageCurrentReport(4000));
+
+    // Staging interval: every 3 minutes (180,000 ms) instead of every 15 seconds
+    const stageInterval = setInterval(() => {
+      requestStageCurrentReport(0);
+    }, 180000);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        requestStageCurrentReport();
+        // Only re-stage if more than 2 minutes since last stage
+        if (Date.now() - lastStagedTimeRef.current > 120000) {
+          requestStageCurrentReport(1000);
+        }
       }
     };
 
@@ -507,11 +528,10 @@ export function AutoReportGenerator() {
     window.addEventListener('focus', handleVisibilityChange);
 
     return () => {
-      unsubLogs();
-      unsubPower();
+      clearTimeout(initialTimer);
+      if (stagingTimeoutRef.current) clearTimeout(stagingTimeoutRef.current);
       unsubObs();
       unsubMaint();
-      unsubEquip();
       unsubTanks();
       clearInterval(stageInterval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
