@@ -54,7 +54,6 @@ import {
 import { db, auth } from '../firebase';
 import { sounds } from '../utils/sounds';
 import { format } from 'date-fns';
-import { APP_VERSION } from '../version';
 
 interface Category {
   id: string;
@@ -79,7 +78,6 @@ interface AppConfig {
   autoSendWhatsAppEnabled?: boolean;
   isUpdatingApp?: boolean;
   updateNotice?: string;
-  targetVersion?: string;
   lastUpdatedTimestamp?: string;
 }
 
@@ -2128,8 +2126,7 @@ export const Settings: React.FC = () => {
                         const newConfig = {
                           ...config,
                           isUpdatingApp: nextState,
-                          updateNotice: config.updateNotice || 'Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores.',
-                          targetVersion: config.targetVersion || APP_VERSION,
+                          updateNotice: config.updateNotice || 'Sincronizando mejoras en el sistema. Puedes continuar usando la app con normalidad.',
                           lastUpdatedTimestamp: new Date().toISOString()
                         };
                         setConfig(newConfig);
@@ -2152,42 +2149,20 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
 
-              {/* Notice Message and Version Configuration */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-                <div className="md:col-span-2 space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800">
-                    Mensaje de Notificación para los Usuarios
-                  </label>
-                  <textarea
-                    rows={2}
+              {/* Notice Message Configuration */}
+              <div className="space-y-2 pt-1">
+                <label className="text-xs font-bold text-slate-800">
+                  Mensaje Opcional para el Equipo
+                </label>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input
+                    type="text"
                     value={config.updateNotice || ''}
                     disabled={isReadOnly || !isAdmin}
-                    placeholder="Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores."
+                    placeholder="Sincronizando mejoras en el sistema. Puedes continuar usando la app con normalidad."
                     onChange={(e) => setConfig({ ...config, updateNotice: e.target.value })}
-                    className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-slate-800 resize-none"
+                    className="flex-1 text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-slate-800"
                   />
-                  <p className="text-[10px] text-slate-500">
-                    Este texto se muestra en el banner flotante visible en todos los dispositivos de la planta.
-                  </p>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-800">
-                    Versión Objetivo de Despliegue
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={config.targetVersion || APP_VERSION}
-                      disabled={isReadOnly || !isAdmin}
-                      onChange={(e) => setConfig({ ...config, targetVersion: e.target.value })}
-                      className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-slate-800"
-                    />
-                  </div>
-                  <div className="text-[10px] text-slate-500 flex items-center justify-between">
-                    <span>Versión actual local:</span>
-                    <span className="font-mono font-bold text-slate-700">v{APP_VERSION}</span>
-                  </div>
                   <button
                     type="button"
                     disabled={isReadOnly || !isAdmin}
@@ -2195,19 +2170,18 @@ export const Settings: React.FC = () => {
                       sounds.playClick();
                       try {
                         await setDoc(doc(db, 'config', 'app_settings'), {
-                          updateNotice: config.updateNotice || 'Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores.',
-                          targetVersion: config.targetVersion || APP_VERSION,
+                          updateNotice: config.updateNotice || 'Sincronizando mejoras en el sistema. Puedes continuar usando la app con normalidad.',
                           lastUpdatedTimestamp: new Date().toISOString()
                         }, { merge: true });
                         sounds.playSuccess();
-                        alert('¡Datos de actualización guardados y transmitidos exitosamente a todos los dispositivos!');
+                        alert('Mensaje guardado exitosamente.');
                       } catch (err) {
                         console.error('Error saving update notice:', err);
                       }
                     }}
-                    className="w-full mt-2 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
+                    className="py-2.5 px-4 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs shrink-0"
                   >
-                    Guardar Texto y Versión
+                    Guardar Mensaje
                   </button>
                 </div>
               </div>

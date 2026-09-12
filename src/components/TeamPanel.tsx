@@ -94,7 +94,6 @@ export const TeamPanel: React.FC = () => {
   // App Update Mode status
   const [isUpdatingApp, setIsUpdatingApp] = useState(false);
   const [updateNotice, setUpdateNotice] = useState('');
-  const [targetVersion, setTargetVersion] = useState('');
   
   // Realtime tick to keep live timestamps and active status fresh every second
   const [, setTick] = useState(0);
@@ -165,7 +164,6 @@ export const TeamPanel: React.FC = () => {
         const d = snap.data();
         setIsUpdatingApp(d.isUpdatingApp === true);
         setUpdateNotice(d.updateNotice || '');
-        setTargetVersion(d.targetVersion || '');
       }
     }, (err) => {
       console.warn('Could not fetch app_settings in TeamPanel:', err);
@@ -625,24 +623,19 @@ export const TeamPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Real-time Update Notice Banner for Admins */}
+      {/* Real-time Update Notice Status for Admins */}
       {isUpdatingApp && (
-        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-400/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+        <div className="bg-amber-50/90 border border-amber-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500 text-slate-950 rounded-xl font-black shrink-0">
-              <Radio size={18} className="animate-pulse" />
+            <div className="p-2 bg-amber-500 text-slate-950 rounded-xl font-bold shrink-0">
+              <Radio size={16} className="animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
-                  Aviso de Actualización Transmitiéndose en Vivo
-                </h4>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-200 text-amber-900 border border-amber-300">
-                  {targetVersion ? `Meta: v${targetVersion}` : 'En despliegue'}
-                </span>
-              </div>
-              <p className="text-xs text-amber-900/90 mt-0.5 font-medium leading-relaxed">
-                {updateNotice || 'Se han realizado nuevas mejoras en el sistema. Los usuarios están recibiendo el aviso en sus pantallas.'}
+              <h4 className="text-xs font-bold text-amber-950">
+                Aviso de Actualización Activo en Pantallas
+              </h4>
+              <p className="text-xs text-amber-900/80 mt-0.5 font-medium leading-relaxed">
+                {updateNotice || 'Se han realizado nuevas mejoras en el sistema.'}
               </p>
             </div>
           </div>
@@ -658,14 +651,14 @@ export const TeamPanel: React.FC = () => {
                   sounds.playSuccess();
                   setFeedbackMsg({
                     type: 'success',
-                    text: 'Aviso de actualización finalizado exitosamente para todos los usuarios.'
+                    text: 'Aviso finalizado exitosamente.'
                   });
                   setTimeout(() => setFeedbackMsg(null), 3500);
                 } catch (e) {
                   console.error('Error stopping update notice:', e);
                 }
               }}
-              className="px-3.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-50 text-amber-950 text-xs font-bold rounded-xl shadow-2xs transition-all active:scale-95"
+              className="px-3.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-100 text-amber-950 text-xs font-bold rounded-xl shadow-2xs transition-all active:scale-95"
             >
               Finalizar Aviso
             </button>

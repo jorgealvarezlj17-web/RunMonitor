@@ -1,26 +1,57 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
-import { RefreshCw, Sparkles, ChevronDown, ChevronUp, Radio, CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, RefreshCw, X } from 'lucide-react';
 import { sounds } from '../utils/sounds';
-import { APP_VERSION } from '../version';
+import { BUILD_ID } from '../version';
 
 export const UpdateBanner: React.FC = () => {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [updateNotice, setUpdateNotice] = useState<string>('');
-  const [targetVersion, setTargetVersion] = useState<string>('');
-  const [isMinimized, setIsMinimized] = useState<boolean>(() => {
+  const pageLoadTimeRef = useRef<number>(Date.now());
+  const [showSuccessToast, setShowSuccessToast] = useState(false);
+  const [newUpdateAvailable, setNewUpdateAvailable] = useState(false);
+  const [isUpdatingServer, setIsUpdatingServer] = useState(false);
+  const [isDismissed, setIsDismissed] = useState(() => {
     try {
-      return sessionStorage.getItem('update_banner_minimized') === 'true';
+      return sessionStorage.getItem('update_pill_dismissed') === 'true';
     } catch {
       return false;
     }
   });
-  const [isClearing, setIsClearing] = useState(false);
-  const [newVersionDetected, setNewVersionDetected] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Real-time listener for app settings
+  // 1. Detect if the app was just updated (or fresh cache loaded)
+  useEffect(() => {
+    try {
+      const justUpdated = sessionStorage.getItem('just_updated_alert') === 'true';
+      const storedBuild = localStorage.getItem('app_build_hash');
+
+      // If the build hash changed or we flagged a completed refresh:
+      if (justUpdated || (storedBuild && storedBuild !== BUILD_ID)) {
+        setShowSuccessToast(true);
+        sounds.playSuccess();
+        sessionStorage.removeItem('just_updated_alert');
+        sessionStorage.removeItem('update_pill_dismissed');
+
+        // Auto-dismiss notification smoothly after 3.5 seconds
+        const timer = setTimeout(() => {
+          setShowSuccessToast(false);
+        }, 3500);
+        return () => clearTimeout(timer);
+      }
+    } catch {
+      // Storage access protected in iframe
+    } finally {
+      try {
+        localStorage.setItem('app_build_hash', BUILD_ID);
+        localStorage.setItem('app_last_boot_time', String(pageLoadTimeRef.current));
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
+  // 2. Real-time listener for maintenance/update announcements in Firestore
   useEffect(() => {
     const unsubscribe = onSnapshot(
       doc(db, 'config', 'app_settings'),
@@ -28,68 +59,81 @@ export const UpdateBanner: React.FC = () => {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const updating = data.isUpdatingApp === true;
-          setIsUpdating(updating);
-          setUpdateNotice(data.updateNotice || 'Actualización de sistema en curso. Se están sincronizando las últimas mejoras y permisos.');
-          setTargetVersion(data.targetVersion || '');
+          const updateTimestamp = data.lastUpdatedTimestamp 
+            ? new Date(data.lastUpdatedTimestamp).getTime() 
+            : 0;
 
-          // If updating turns off, reset minimized
+          // If the page was loaded AFTER the update was published, this client already has the update!
+          const clientAlreadyHasUpdate = pageLoadTimeRef.current >= updateTimestamp;
+
+          if (updating && !clientAlreadyHasUpdate) {
+            setIsUpdatingServer(true);
+          } else {
+            // Already updated or update completed: do not show notice
+            setIsUpdatingServer(false);
+          }
+
           if (!updating) {
-            setIsMinimized(false);
-            sessionStorage.removeItem('update_banner_minimized');
+            sessionStorage.removeItem('update_pill_dismissed');
+            setIsDismissed(false);
           }
         }
       },
-      (error) => {
-        // Silently ignore permissions if unauthenticated
-        console.warn('Config snapshot status:', error.message);
+      () => {
+        // Silently ignore permissions
       }
     );
 
     return () => unsubscribe();
   }, []);
 
-  // Background check to see if new version is live on server
+  // 3. Background detection of new build / modern caches on server
   useEffect(() => {
-    if (!isUpdating && targetVersion === APP_VERSION) return;
+    let active = true;
 
-    const checkServerVersion = async () => {
+    const checkServerForNewAssets = async () => {
       try {
         const res = await fetch(`/?_t=${Date.now()}`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
         });
-        if (res.ok) {
-          const text = await res.text();
-          // If HTML contains the targetVersion or new bundle
-          if (targetVersion && text.includes(targetVersion)) {
-            setNewVersionDetected(true);
+        if (res.ok && active) {
+          const html = await res.text();
+          // Detect if current loaded bundle script matches server bundle script
+          const currentScripts = Array.from(document.querySelectorAll('script[src]'))
+            .map(s => s.getAttribute('src') || '')
+            .filter(src => src.includes('/assets/'));
+
+          if (currentScripts.length > 0) {
+            const hasNewAssetsOnServer = currentScripts.some(src => !html.includes(src));
+            if (hasNewAssetsOnServer) {
+              setNewUpdateAvailable(true);
+            }
           }
         }
-      } catch (e) {
+      } catch {
         // Network offline or error
       }
     };
 
-    const interval = setInterval(checkServerVersion, 35000);
-    checkServerVersion();
-    return () => clearInterval(interval);
-  }, [isUpdating, targetVersion]);
+    // Check periodically without bothering the user
+    const interval = setInterval(checkServerForNewAssets, 60000);
+    const initialCheck = setTimeout(checkServerForNewAssets, 15000);
 
-  // Deep Cache Cleaner & Hard Reload
-  const handleForceUpdate = useCallback(async () => {
+    return () => {
+      active = false;
+      clearInterval(interval);
+      clearTimeout(initialCheck);
+    };
+  }, []);
+
+  // Refresh modern caches and reload safely without logging out
+  const handleApplyUpdate = useCallback(async () => {
     sounds.playClick();
-    setIsClearing(true);
+    setIsRefreshing(true);
 
     try {
-      // 1. Unregister all active Service Workers
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations();
-        for (const registration of registrations) {
-          await registration.unregister();
-        }
-      }
-
-      // 2. Clear CacheStorage (PWA caches, vite cache)
+      // 1. Clear caches
       if ('caches' in window) {
         const cacheNames = await caches.keys();
         for (const name of cacheNames) {
@@ -97,156 +141,112 @@ export const UpdateBanner: React.FC = () => {
         }
       }
 
-      // 3. Clear version and temporary storage while preserving authentication
-      try {
-        localStorage.removeItem('app_version');
-        sessionStorage.clear();
-      } catch (e) {
-        console.warn('Storage cleanup notice:', e);
+      // 2. Unregister old service workers
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const registration of registrations) {
+          await registration.unregister();
+        }
       }
 
-      // 4. Force hard reload with timestamp query to bypass HTTP cache
-      const cleanUrl = window.location.origin + window.location.pathname + `?update=${Date.now()}`;
+      // 3. Mark update ready to notify upon reload
+      try {
+        sessionStorage.setItem('just_updated_alert', 'true');
+      } catch {
+        // ignore
+      }
+
+      // 4. Clean reload
+      const cleanUrl = window.location.origin + window.location.pathname + `?sync=${Date.now()}`;
       window.location.replace(cleanUrl);
-    } catch (err) {
-      console.error('Error during cache cleanup:', err);
+    } catch {
       window.location.reload();
     }
   }, []);
 
-  const toggleMinimize = (val: boolean) => {
+  const handleDismiss = () => {
     sounds.playClick();
-    setIsMinimized(val);
+    setIsDismissed(true);
     try {
-      sessionStorage.setItem('update_banner_minimized', val ? 'true' : 'false');
+      sessionStorage.setItem('update_pill_dismissed', 'true');
     } catch {
       // ignore
     }
   };
 
-  // Determine if banner should show:
-  // Shows if isUpdating is true OR if targetVersion exists and differs from local APP_VERSION
-  const hasVersionMismatch = targetVersion && targetVersion !== APP_VERSION;
-  const shouldShow = isUpdating || hasVersionMismatch;
-
-  if (!shouldShow) return null;
+  const showPill = !isDismissed && (newUpdateAvailable || (isUpdatingServer && !showSuccessToast));
 
   return (
-    <div className="fixed z-50 pointer-events-none inset-x-0 bottom-4 px-4 flex justify-center">
-      <AnimatePresence mode="wait">
-        {isMinimized ? (
-          // Minimized Floating Pill
-          <motion.button
-            key="minimized"
-            initial={{ opacity: 0, y: 20, scale: 0.8 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.8 }}
-            onClick={() => toggleMinimize(false)}
-            className="pointer-events-auto bg-slate-900/95 text-white border-2 border-amber-400 shadow-2xl backdrop-blur-md px-4 py-2 rounded-full flex items-center gap-2.5 text-xs font-bold hover:bg-slate-800 transition-all hover:scale-105 active:scale-95 group"
-          >
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-            </span>
-            <span className="text-amber-300 group-hover:text-amber-200">
-              {newVersionDetected ? '🎉 ¡Nueva versión lista para instalar!' : 'Actualización en curso...'}
-            </span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono border border-amber-500/30">
-              v{targetVersion || APP_VERSION}
-            </span>
-            <ChevronUp size={14} className="text-slate-400 group-hover:text-white" />
-          </motion.button>
-        ) : (
-          // Expanded Full Card Banner
-          <motion.div
-            key="expanded"
-            initial={{ opacity: 0, y: 40, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 40, scale: 0.95 }}
-            className="pointer-events-auto w-full max-w-xl bg-gradient-to-br from-slate-900 via-amber-950/90 to-slate-900 text-white rounded-3xl shadow-2xl border-2 border-amber-400/80 p-4 sm:p-5 relative overflow-hidden backdrop-blur-xl"
-          >
-            {/* Ambient Background Glow */}
-            <div className="absolute -top-20 -right-20 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none"></div>
-
-            {/* Header / Minimize Button */}
-            <div className="flex items-start justify-between gap-3 mb-3 relative z-10">
-              <div className="flex items-center gap-2.5 flex-wrap">
-                <span className="px-2.5 py-1 text-[11px] font-black uppercase tracking-wider bg-amber-500 text-slate-950 rounded-lg flex items-center gap-1.5 shadow-xs">
-                  <Radio size={12} className="animate-pulse text-slate-950" />
-                  <span>Aviso del Sistema</span>
-                </span>
-                <span className="text-xs font-bold text-amber-300 flex items-center gap-1 font-mono">
-                  <span>Local: v{APP_VERSION}</span>
-                  {targetVersion && targetVersion !== APP_VERSION && (
-                    <>
-                      <span className="text-slate-400">→</span>
-                      <span className="text-emerald-400 font-black">Meta: v{targetVersion}</span>
-                    </>
-                  )}
-                </span>
+    <>
+      {/* 1. Subtle confirmation toast when modern caches/update are loaded */}
+      <AnimatePresence>
+        {showSuccessToast && (
+          <div className="fixed top-4 inset-x-0 z-50 flex justify-center pointer-events-none px-4">
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -15, scale: 0.95 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="pointer-events-auto bg-slate-900/95 text-white border border-emerald-500/50 shadow-xl backdrop-blur-md px-4 py-2.5 rounded-2xl flex items-center gap-2.5 text-xs font-semibold"
+            >
+              <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-400/30">
+                <CheckCircle2 size={13} />
               </div>
-
+              <span className="text-slate-100">Aplicación actualizada con éxito</span>
               <button
-                onClick={() => toggleMinimize(true)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors"
-                title="Minimizar aviso"
+                onClick={() => setShowSuccessToast(false)}
+                className="text-slate-400 hover:text-white ml-2 p-0.5 rounded transition-colors"
+                title="Cerrar"
               >
-                <ChevronDown size={18} />
+                <X size={13} />
               </button>
-            </div>
-
-            {/* Content Body */}
-            <div className="space-y-2 relative z-10">
-              <h4 className="text-base font-black text-white flex items-center gap-2">
-                <span>{newVersionDetected ? '✨ Nueva actualización detectada' : 'Actualización en Curso'}</span>
-                {isUpdating && (
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
-                )}
-              </h4>
-
-              <p className="text-xs text-slate-200 leading-relaxed font-medium">
-                {updateNotice || 'Se han realizado nuevas mejoras en el sistema. Si aún no las ves reflejadas en tu teléfono, puedes forzar la recarga para limpiar la memoria caché.'}
-              </p>
-
-              {newVersionDetected ? (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-300 font-bold bg-emerald-500/20 px-3 py-1.5 rounded-xl border border-emerald-400/40">
-                  <CheckCircle2 size={15} className="text-emerald-400 shrink-0" />
-                  <span>Los nuevos archivos ya están disponibles. ¡Haz clic para aplicar!</span>
-                </div>
-              ) : (
-                <div className="text-[11px] text-amber-200/80 bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/20">
-                  💡 <span className="font-semibold">Nota para operadores y equipo:</span> La actualización se cargará automáticamente en segundo plano. Si deseas ver los cambios de inmediato, pulsa el botón de abajo.
-                </div>
-              )}
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mt-4 pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 relative z-10">
-              <span className="text-[11px] text-slate-400 font-medium text-center sm:text-left">
-                No se cerrará tu sesión activa de usuario.
-              </span>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  onClick={() => toggleMinimize(true)}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-white/10 transition-colors shrink-0"
-                >
-                  Ocultar
-                </button>
-
-                <button
-                  onClick={handleForceUpdate}
-                  disabled={isClearing}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-black rounded-xl text-xs shadow-lg transition-all active:scale-95 disabled:opacity-50"
-                >
-                  <RefreshCw size={14} className={isClearing ? 'animate-spin' : ''} />
-                  <span>{isClearing ? 'Limpiando y recargando...' : 'Actualizar y Limpiar Caché'}</span>
-                </button>
-              </div>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
-    </div>
+
+      {/* 2. Discreet, non-intrusive floating indicator (never blocks the user) */}
+      <AnimatePresence>
+        {showPill && (
+          <div className="fixed top-3 inset-x-0 z-40 flex justify-center pointer-events-none px-3">
+            <motion.div
+              initial={{ opacity: 0, y: -15, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -15, scale: 0.96 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="pointer-events-auto bg-slate-900/90 text-white border border-slate-700/80 shadow-lg backdrop-blur-md px-3.5 py-1.5 rounded-full flex items-center gap-2.5 text-xs max-w-lg"
+            >
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+
+              <span className="text-slate-200 truncate">
+                {newUpdateAvailable
+                  ? 'Nuevas mejoras listas. Puedes seguir usando la app'
+                  : 'Sincronizando mejoras. Puedes seguir usando la app normalmente'}
+              </span>
+
+              <button
+                onClick={handleApplyUpdate}
+                disabled={isRefreshing}
+                className="ml-auto px-2.5 py-1 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-[11px] transition-colors flex items-center gap-1 shrink-0 active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw size={11} className={isRefreshing ? 'animate-spin' : ''} />
+                <span>{isRefreshing ? 'Aplicando...' : 'Actualizar'}</span>
+              </button>
+
+              <button
+                onClick={handleDismiss}
+                className="text-slate-400 hover:text-white p-1 rounded transition-colors shrink-0"
+                title="Ocultar aviso"
+              >
+                <X size={13} />
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </>
   );
 };

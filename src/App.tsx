@@ -21,7 +21,7 @@ import { format } from 'date-fns';
 import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
 import { AutoReportGenerator } from './components/AutoReportGenerator';
-import { APP_VERSION } from './version';
+import { BUILD_ID } from './version';
 
 export default function App() {
   const [user, setUser] = useState<User | any | null>(() => {
@@ -60,11 +60,16 @@ export default function App() {
     }
   }, [profile, activeTab]);
 
-  // Version Control (preserved without unregistering service workers)
+  // Sincronización transparente de actualizaciones y caché
   useEffect(() => {
-    const storedVersion = localStorage.getItem('app_version');
-    if (storedVersion !== APP_VERSION) {
-      localStorage.setItem('app_version', APP_VERSION);
+    try {
+      const storedBuild = localStorage.getItem('app_build_hash');
+      if (storedBuild && storedBuild !== BUILD_ID) {
+        sessionStorage.setItem('just_updated_alert', 'true');
+      }
+      localStorage.setItem('app_build_hash', BUILD_ID);
+    } catch {
+      // Storage access protected in iframe
     }
   }, []);
 
