@@ -288,7 +288,7 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (docSnap.exists()) {
             const data = docSnap.data() as Profile;
             
-            // Auto-promote ONLY the master admin user if needed
+            // Auto-promote master admin or sync admin role if needed
             if (isAdminEmail) {
               if (data.role !== 'admin' || !data.is_synced) {
                 try {
@@ -296,6 +296,13 @@ export const ProfileProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 } catch (err) {
                   console.warn('Error setting admin role sync:', err);
                 }
+              }
+            } else if (data.role === 'admin' && !data.is_synced) {
+              // Ensure any admin user has is_synced: true so they are never in read-only mode
+              try {
+                await setDoc(profileRef, { is_synced: true }, { merge: true });
+              } catch (err) {
+                console.warn('Error setting admin is_synced:', err);
               }
             }
             

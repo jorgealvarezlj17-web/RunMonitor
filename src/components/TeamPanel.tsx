@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { collection, query, onSnapshot, doc, updateDoc, setDoc, deleteDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { db, auth } from '../firebase';
 import { Profile, isMasterAdminEmail } from '../context/ProfileContext';
 import { 
   Shield, 
@@ -27,7 +27,11 @@ import {
   Radio,
   Eye,
   EyeOff,
-  X
+  X,
+  Crown,
+  Zap,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow, format } from 'date-fns';
@@ -106,6 +110,22 @@ export const TeamPanel: React.FC = () => {
       snapshot.forEach((docSnap) => {
         fetchedProfiles.push({ id: docSnap.id, ...docSnap.data() } as Profile);
       });
+
+      // Ensure master admin is visible in the list even before their first Firestore write
+      const hasMaster = fetchedProfiles.some(p => isMasterAdminEmail(p.email));
+      if (!hasMaster && auth.currentUser && isMasterAdminEmail(auth.currentUser.email)) {
+        fetchedProfiles.unshift({
+          id: auth.currentUser.uid,
+          email: auth.currentUser.email || 'jorgealvarez.lj17@gmail.com',
+          full_name: auth.currentUser.displayName || 'Jorge Álvarez (Administrador Principal)',
+          role: 'admin',
+          is_synced: true,
+          is_online: (typeof navigator === 'undefined' || navigator.onLine) && (typeof document === 'undefined' || !document.hidden),
+          last_connection: new Date().toISOString(),
+          photo_url: auth.currentUser.photoURL || undefined
+        });
+      }
+
       setProfiles(fetchedProfiles);
       setLoading(false);
     }, (err) => {
@@ -142,25 +162,30 @@ export const TeamPanel: React.FC = () => {
 
   // Helper to check if a profile is actively looking at the app right now
   const isProfileOnline = (p: Profile): boolean => {
-    if (isMasterAdminEmail(p.email)) return false;
+    // Current user in this active browser session
+    if (auth.currentUser && (p.id === auth.currentUser.uid || p.email?.toLowerCase().trim() === auth.currentUser.email?.toLowerCase().trim())) {
+      return (typeof navigator === 'undefined' || navigator.onLine) && 
+             (typeof document === 'undefined' || (document.visibilityState === 'visible' && !document.hidden));
+    }
     if (!p.is_online) return false;
     if (!p.last_connection) return false;
     const diffMs = Date.now() - new Date(p.last_connection).getTime();
-    return diffMs < 14000; // Active within last 14 seconds (heartbeat is 4s)
+    return diffMs < 15000; // Active within last 15 seconds (heartbeat is 4s)
   };
 
   // Stats Calculations
   const stats = useMemo(() => {
-    const operatorProfiles = profiles.filter(p => !isMasterAdminEmail(p.email));
-    const totalUsers = operatorProfiles.length;
-    const onlineUsers = operatorProfiles.filter(isProfileOnline).length;
+    const totalUsers = profiles.length;
+    const onlineUsers = profiles.filter(isProfileOnline).length;
     const offlineUsers = Math.max(0, totalUsers - onlineUsers);
+    const adminUsers = profiles.filter(p => p.role === 'admin' || isMasterAdminEmail(p.email)).length;
     const totalAllowed = allowedEmails.length;
     const activeAllowed = allowedEmails.filter(a => a.status !== 'inactive').length;
     return {
       totalUsers,
       onlineUsers,
       offlineUsers,
+      adminUsers,
       totalAllowed,
       activeAllowed
     };
@@ -190,12 +215,38 @@ export const TeamPanel: React.FC = () => {
   // Toggle role between admin and operator
   const toggleRole = async (profileId: string, currentRole: string) => {
     sounds.playClick();
+    const newRole = currentRole === 'admin' ? 'operator' : 'admin';
     try {
       await updateDoc(doc(db, 'profiles', profileId), {
-        role: currentRole === 'admin' ? 'operator' : 'admin'
+        role: newRole,
+        is_synced: true // Admin is always synced with full power
       });
+
+      // Synchronize role with allowed_emails if listed
+      const targetProfile = profiles.find(p => p.id === profileId);
+      if (targetProfile?.email) {
+        const emailLower = targetProfile.email.toLowerCase().trim();
+        const allowedRef = doc(db, 'allowed_emails', emailLower);
+        const snap = await getDoc(allowedRef);
+        if (snap.exists()) {
+          await updateDoc(allowedRef, {
+            role: newRole,
+            status: 'active'
+          });
+        }
+      }
+
+      setFeedbackMsg({
+        type: 'success',
+        text: `Rol asignado: ${newRole === 'admin' ? 'Administrador (Todas las opciones del sistema habilitadas)' : 'Operador'} para ${targetProfile?.full_name || targetProfile?.email}`
+      });
+      setTimeout(() => setFeedbackMsg(null), 4000);
     } catch (error) {
       console.error('Error updating role:', error);
+      setFeedbackMsg({
+        type: 'error',
+        text: 'Error al cambiar rol: ' + ((error as any)?.message || String(error))
+      });
     }
   };
 
@@ -260,11 +311,24 @@ export const TeamPanel: React.FC = () => {
         addedAt: serverTimestamp()
       });
       
+      // If a profile already exists for this email, sync their role immediately
+      const existingProfile = profiles.find(p => p.email?.toLowerCase().trim() === emailLower);
+      if (existingProfile) {
+        try {
+          await updateDoc(doc(db, 'profiles', existingProfile.id), {
+            role: newRole,
+            is_synced: true
+          });
+        } catch (errProfile) {
+          console.warn('Could not sync profile role on allow email:', errProfile);
+        }
+      }
+
       setNewEmail('');
       setNewName('');
       setFeedbackMsg({
         type: 'success',
-        text: `¡Correo ${emailLower} autorizado exitosamente! Ahora este trabajador puede registrarse o iniciar sesión.`
+        text: `¡Correo ${emailLower} autorizado como ${newRole === 'admin' ? 'Administrador (Todas las opciones habilitadas)' : 'Operador'} exitosamente!`
       });
       setTimeout(() => setFeedbackMsg(null), 4000);
     } catch (error: any) {
@@ -357,12 +421,39 @@ export const TeamPanel: React.FC = () => {
     }
   };
 
+  // Master Admin Profile reference
+  const masterAdminProfile = useMemo(() => {
+    const found = profiles.find(p => isMasterAdminEmail(p.email));
+    if (found) return found;
+    if (auth.currentUser && isMasterAdminEmail(auth.currentUser.email)) {
+      return {
+        id: auth.currentUser.uid,
+        email: auth.currentUser.email || 'jorgealvarez.lj17@gmail.com',
+        full_name: auth.currentUser.displayName || 'Jorge Álvarez (Administrador Principal)',
+        role: 'admin' as const,
+        is_synced: true,
+        is_online: (typeof navigator === 'undefined' || navigator.onLine) && (typeof document === 'undefined' || !document.hidden),
+        last_connection: new Date().toISOString(),
+        photo_url: auth.currentUser.photoURL || undefined
+      };
+    }
+    return null;
+  }, [profiles]);
+
   // Filtered profiles for User Tab
   const filteredProfiles = useMemo(() => {
-    return profiles.filter((p) => {
-      // Exclude master admin profile from the operator list
-      if (isMasterAdminEmail(p.email)) return false;
+    // Sort profiles: Master Admin first, then other Admins, then Operators
+    const sorted = [...profiles].sort((a, b) => {
+      const aMaster = isMasterAdminEmail(a.email);
+      const bMaster = isMasterAdminEmail(b.email);
+      if (aMaster && !bMaster) return -1;
+      if (!aMaster && bMaster) return 1;
+      if (a.role === 'admin' && b.role !== 'admin') return -1;
+      if (a.role !== 'admin' && b.role === 'admin') return 1;
+      return (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '');
+    });
 
+    return sorted.filter((p) => {
       const isOnline = isProfileOnline(p);
       const emailLower = p.email?.toLowerCase() || '';
       const nameLower = p.full_name?.toLowerCase() || '';
@@ -374,8 +465,8 @@ export const TeamPanel: React.FC = () => {
 
       if (userFilter === 'online') return isOnline;
       if (userFilter === 'offline') return !isOnline;
-      if (userFilter === 'admin') return p.role === 'admin';
-      if (userFilter === 'operator') return p.role === 'operator';
+      if (userFilter === 'admin') return p.role === 'admin' || isMasterAdminEmail(p.email);
+      if (userFilter === 'operator') return p.role === 'operator' && !isMasterAdminEmail(p.email);
       return true;
     });
   }, [profiles, searchTerm, userFilter]);
@@ -595,10 +686,99 @@ export const TeamPanel: React.FC = () => {
                 onClick={() => { sounds.playClick(); setUserFilter('admin'); }}
                 className={`px-3 py-1.5 rounded-xl transition-all ${userFilter === 'admin' ? 'bg-white text-purple-800 shadow-xs font-black' : 'hover:text-purple-700'}`}
               >
-                Admins
+                Admins ({stats.adminUsers})
               </button>
             </div>
           </div>
+
+          {/* Tarjeta Destacada de Conectividad del Administrador Principal */}
+          {masterAdminProfile && (
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-400/5 to-purple-500/10 border-2 border-amber-400/50 rounded-3xl p-5 shadow-xs relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <div className="relative shrink-0">
+                    {masterAdminProfile.photo_url ? (
+                      <img
+                        src={masterAdminProfile.photo_url}
+                        alt="Administrador Principal"
+                        className="w-14 h-14 rounded-2xl object-cover border-2 border-amber-400 shadow-xs"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white font-black text-xl shadow-xs">
+                        👑
+                      </div>
+                    )}
+                    {isProfileOnline(masterAdminProfile) ? (
+                      <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-4 w-4 bg-emerald-500 border-2 border-white"></span>
+                      </span>
+                    ) : (
+                      <span className="absolute -bottom-1 -right-1 h-3.5 w-3.5 rounded-full bg-slate-300 border-2 border-white"></span>
+                    )}
+                  </div>
+
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-base font-black text-slate-900 truncate">
+                        {masterAdminProfile.full_name || 'Jorge Álvarez'}
+                      </h3>
+                      <span className="px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white rounded-md shadow-2xs flex items-center gap-1">
+                        <Crown size={12} />
+                        <span>Administrador Principal & Propietario</span>
+                      </span>
+                      {auth.currentUser && (masterAdminProfile.id === auth.currentUser.uid || masterAdminProfile.email?.toLowerCase().trim() === auth.currentUser.email?.toLowerCase().trim()) && (
+                        <span className="px-2 py-0.5 text-[10px] font-bold bg-slate-900 text-white rounded-md">
+                          Tu Sesión Actual
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                      {masterAdminProfile.email}
+                    </p>
+
+                    <div className="flex items-center gap-3 mt-2 flex-wrap text-xs">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        {isProfileOnline(masterAdminProfile) ? (
+                          <>
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <span className="text-emerald-700">Conectado y Activo en Vivo</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+                            <span className="text-slate-500">
+                              Última conexión: {masterAdminProfile.last_connection ? format(new Date(masterAdminProfile.last_connection), 'dd/MM/yyyy hh:mm a', { locale: es }) : 'No registrada'}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-purple-700 font-bold bg-purple-100/80 px-2 py-0.5 rounded-md border border-purple-200">
+                        Control Total Ilimitado del Sistema
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex sm:flex-col items-start sm:items-end justify-between sm:justify-center border-t sm:border-t-0 pt-3 sm:pt-0 border-amber-200/60 shrink-0">
+                  <span className="text-[11px] font-black text-amber-950 uppercase tracking-wider flex items-center gap-1">
+                    <Zap size={13} className="text-amber-500 fill-amber-500" />
+                    Conectividad Maestra
+                  </span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border mt-1 flex items-center gap-1.5 shadow-2xs ${
+                    isProfileOnline(masterAdminProfile)
+                      ? 'text-emerald-700 bg-emerald-100/90 border-emerald-300'
+                      : 'text-slate-600 bg-slate-100 border-slate-300'
+                  }`}>
+                    {isProfileOnline(masterAdminProfile) ? <Wifi size={13} className="text-emerald-600" /> : <WifiOff size={13} className="text-slate-500" />}
+                    <span>{isProfileOnline(masterAdminProfile) ? 'Transmisión en Vivo' : 'En Espera'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* User Cards Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -662,12 +842,14 @@ export const TeamPanel: React.FC = () => {
                             {p.full_name || 'Usuario sin nombre'}
                           </h4>
                           {isOwnerAdmin ? (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 rounded-md border border-amber-300/60">
-                              Propietario
+                            <span className="px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-amber-500 text-white rounded-md shadow-2xs flex items-center gap-1">
+                              <Crown size={12} />
+                              <span>Propietario / Admin Principal</span>
                             </span>
                           ) : p.role === 'admin' ? (
-                            <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 rounded-md border border-purple-200">
-                              Admin
+                            <span className="px-2.5 py-0.5 text-[10px] font-black uppercase tracking-wider bg-purple-600 text-white rounded-md shadow-2xs flex items-center gap-1">
+                              <ShieldCheck size={12} />
+                              <span>Admin (Control Total)</span>
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 rounded-md border border-slate-200">
@@ -676,6 +858,14 @@ export const TeamPanel: React.FC = () => {
                           )}
                         </div>
                         <p className="text-xs text-slate-500 font-medium truncate mt-0.5">{p.email}</p>
+
+                        {/* Admin permissions badge indicator */}
+                        {p.role === 'admin' && !isOwnerAdmin && (
+                          <div className="mt-1.5 flex items-center gap-1 text-[11px] font-semibold text-purple-800 bg-purple-50 px-2 py-0.5 rounded-lg border border-purple-200/80">
+                            <Sparkles size={11} className="text-purple-600 shrink-0" />
+                            <span>Acceso completo: Estadísticas, Equipo, Configuración y Equipos</span>
+                          </div>
+                        )}
 
                         {/* Real-time Status Banner */}
                         <div className="mt-2.5">
@@ -777,12 +967,12 @@ export const TeamPanel: React.FC = () => {
                         onClick={() => toggleRole(p.id, p.role)}
                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                           p.role === 'admin'
-                            ? 'bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100'
+                            ? 'bg-purple-100 text-purple-900 border border-purple-300 hover:bg-purple-200 shadow-2xs'
                             : 'bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200'
                         } ${isOwnerAdmin ? 'opacity-80 cursor-default' : ''}`}
                       >
-                        <Shield size={13} className={p.role === 'admin' ? 'text-purple-600' : 'text-slate-500'} />
-                        <span>{p.role === 'admin' ? 'Administrador' : 'Operador'}</span>
+                        <Shield size={13} className={p.role === 'admin' ? 'text-purple-700' : 'text-slate-500'} />
+                        <span>{p.role === 'admin' ? 'Administrador (Total)' : 'Operador'}</span>
                       </button>
 
                       {/* Sync / App Access Toggle */}
