@@ -114,6 +114,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /aquanova_submissions/{submissionId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /{path=**} {
       allow read, write: if false;
     }

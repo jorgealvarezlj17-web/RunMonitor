@@ -157,6 +157,9 @@ export const Settings: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [resetConfirmText, setResetConfirmText] = useState('');
   const [resetStatus, setResetStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [resetProgressMessage, setResetProgressMessage] = useState('');
+  const [resetProgressPercent, setResetProgressPercent] = useState(0);
+  const [resetErrorMessage, setResetErrorMessage] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string>('--:--:--');
 
   useEffect(() => {
@@ -613,65 +616,119 @@ export const Settings: React.FC = () => {
     
     setIsResetting(true);
     setResetStatus('idle');
+    setResetErrorMessage(null);
+    setResetProgressPercent(5);
+    setResetProgressMessage('Conectando con la base de datos...');
+
     try {
-      // 1. Fetch all documents in logs and delete them
+      // 1. Fetch all documents in logs
+      setResetProgressMessage('Consultando historial de encendidos y apagados...');
       const logsSnap = await getDocs(collection(db, 'logs'));
-      // 1.5. Fetch all documents in power_events and delete them
+      const totalLogs = logsSnap.docs.length;
+      setResetProgressPercent(15);
+
+      // 1.5. Fetch all documents in power_events
+      setResetProgressMessage('Consultando historial de eventos de Corpoelec...');
       const powerSnap = await getDocs(collection(db, 'power_events'));
-      // 2. Fetch all equipment and reset them to status: 'off', totalUsageTime: 0
+      const totalPower = powerSnap.docs.length;
+      setResetProgressPercent(25);
+
+      // 2. Fetch all equipment
+      setResetProgressMessage('Consultando equipos de planta...');
       const equipSnap = await getDocs(collection(db, 'equipment'));
-      const now = Timestamp.now();
+      const totalEquip = equipSnap.docs.length;
+      setResetProgressPercent(35);
 
-      // Collect all batch operations and commit in chunks of 400
-      let batch = writeBatch(db);
-      let opCount = 0;
+      const CHUNK_SIZE = 40;
 
-      const commitAndResetBatchIfNeeded = async () => {
-        opCount++;
-        if (opCount >= 400) {
+      // 3. Delete logs in chunks
+      if (totalLogs > 0) {
+        for (let i = 0; i < totalLogs; i += CHUNK_SIZE) {
+          const chunk = logsSnap.docs.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((d) => batch.delete(d.ref));
           await batch.commit();
-          batch = writeBatch(db);
-          opCount = 0;
+          const currentCount = Math.min(i + chunk.length, totalLogs);
+          const percent = Math.min(60, 35 + Math.round((currentCount / totalLogs) * 25));
+          setResetProgressPercent(percent);
+          setResetProgressMessage(`Borrando historial de encendidos (${currentCount}/${totalLogs})...`);
         }
-      };
-
-      for (const docSnap of logsSnap.docs) {
-        batch.delete(docSnap.ref);
-        await commitAndResetBatchIfNeeded();
+      } else {
+        setResetProgressPercent(60);
       }
 
-      for (const docSnap of powerSnap.docs) {
-        batch.delete(docSnap.ref);
-        await commitAndResetBatchIfNeeded();
+      // 4. Delete power_events in chunks
+      if (totalPower > 0) {
+        for (let i = 0; i < totalPower; i += CHUNK_SIZE) {
+          const chunk = powerSnap.docs.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((d) => batch.delete(d.ref));
+          await batch.commit();
+          const currentCount = Math.min(i + chunk.length, totalPower);
+          const percent = Math.min(80, 60 + Math.round((currentCount / totalPower) * 20));
+          setResetProgressPercent(percent);
+          setResetProgressMessage(`Borrando fallas eléctricas (${currentCount}/${totalPower})...`);
+        }
+      } else {
+        setResetProgressPercent(80);
       }
 
-      for (const docSnap of equipSnap.docs) {
-        batch.update(docSnap.ref, {
-          status: 'off',
-          totalUsageTime: 0,
-          lastTurnedOn: null,
-          lastOffReason: null,
-          lastUpdated: now
-        });
-        await commitAndResetBatchIfNeeded();
+      // 5. Reset all equipment to off and 0 hours
+      const now = Timestamp.now();
+      if (totalEquip > 0) {
+        for (let i = 0; i < totalEquip; i += CHUNK_SIZE) {
+          const chunk = equipSnap.docs.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach((d) => {
+            batch.update(d.ref, {
+              status: 'off',
+              totalUsageTime: 0,
+              lastTurnedOn: null,
+              lastOffReason: 'Restablecimiento general de planta',
+              lastUpdated: now
+            });
+          });
+          await batch.commit();
+          const currentCount = Math.min(i + chunk.length, totalEquip);
+          const percent = Math.min(95, 80 + Math.round((currentCount / totalEquip) * 15));
+          setResetProgressPercent(percent);
+          setResetProgressMessage(`Apagando equipos y reseteando horas a 0 (${currentCount}/${totalEquip})...`);
+        }
+      } else {
+        setResetProgressPercent(95);
       }
 
-      if (opCount > 0) {
-        await batch.commit();
+      // 6. Reset draft observations/maintenance if any
+      setResetProgressMessage('Limpiando borradores de turno...');
+      try {
+        const batchConfig = writeBatch(db);
+        batchConfig.set(doc(db, 'config', 'current_shift_observations'), { observations: '', lastUpdated: now }, { merge: true });
+        batchConfig.set(doc(db, 'config', 'current_shift_maintenance'), { preventivos: [], correctivos: [], inoperativos: [], lastUpdated: now }, { merge: true });
+        await batchConfig.commit();
+      } catch (cfgErr) {
+        console.warn('Non-critical config reset notice:', cfgErr);
       }
 
+      setResetProgressPercent(100);
+      setResetProgressMessage('¡Restablecimiento completado con éxito!');
       sounds.playSuccess();
       setResetStatus('success');
-      setShowResetConfirm(false);
-      setResetConfirmText('');
-      setTimeout(() => setResetStatus('idle'), 5000);
-    } catch (error) {
+
+      // Keep success message visible briefly before closing modal
+      setTimeout(() => {
+        setShowResetConfirm(false);
+        setResetConfirmText('');
+        setIsResetting(false);
+        setResetProgressPercent(0);
+        setResetProgressMessage('');
+      }, 1600);
+
+      setTimeout(() => setResetStatus('idle'), 6000);
+    } catch (error: any) {
       console.error('Error resetting operation logs:', error);
-      try {
-        handleFirestoreError(error, OperationType.DELETE, 'logs');
-      } catch (e) {}
+      const errMsg = error?.message || 'Error de permisos o conexión con la base de datos.';
+      setResetErrorMessage(errMsg);
       setResetStatus('error');
-    } finally {
       setIsResetting(false);
     }
   };
@@ -2139,32 +2196,78 @@ export const Settings: React.FC = () => {
                           <input
                             type="text"
                             value={resetConfirmText}
+                            disabled={isResetting || resetStatus === 'success'}
                             onChange={(e) => setResetConfirmText(e.target.value)}
-                            placeholder="Escribe aquí..."
-                            className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-rose-500/50 outline-none text-xs font-bold"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && resetConfirmText.trim().toLowerCase() === 'restablecer' && !isResetting && resetStatus !== 'success') {
+                                handleResetAllData();
+                              }
+                            }}
+                            placeholder="Escribe restablecer aquí..."
+                            className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:ring-2 focus:ring-rose-500/50 outline-none text-xs font-bold disabled:opacity-50"
                           />
                         </div>
 
-                        <div className="flex gap-3">
+                        {/* Progress Bar during reset */}
+                        {isResetting && (
+                          <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200 space-y-2.5">
+                            <div className="flex items-center justify-between text-xs font-bold text-rose-950">
+                              <div className="flex items-center gap-2">
+                                <Loader2 className="animate-spin text-rose-600 shrink-0" size={16} />
+                                <span className="line-clamp-1">{resetProgressMessage || 'Restableciendo datos...'}</span>
+                              </div>
+                              <span className="text-rose-600 font-extrabold shrink-0 ml-2">{resetProgressPercent}%</span>
+                            </div>
+                            <div className="w-full h-2.5 bg-rose-200/60 rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-rose-600 rounded-full transition-all duration-300 ease-out"
+                                style={{ width: `${resetProgressPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Success message inside modal */}
+                        {resetStatus === 'success' && (
+                          <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-2.5 text-xs font-bold text-emerald-900">
+                            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+                            <span>¡Listo! Todos los historiales fueron borrados y los equipos reiniciados.</span>
+                          </div>
+                        )}
+
+                        {/* Error message inside modal */}
+                        {resetErrorMessage && (
+                          <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-900 flex items-start gap-2.5">
+                            <AlertCircle size={18} className="text-rose-600 shrink-0 mt-0.5" />
+                            <div>
+                              <div className="font-extrabold text-rose-950">No se pudo completar el restablecimiento:</div>
+                              <div className="text-[11px] font-medium text-rose-700 mt-1 leading-relaxed">{resetErrorMessage}</div>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-3 pt-1">
                           <button
                             type="button"
+                            disabled={isResetting}
                             onClick={() => {
                               sounds.playClick();
                               setShowResetConfirm(false);
                               setResetConfirmText('');
+                              setResetErrorMessage(null);
                             }}
-                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all"
+                            className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold text-xs rounded-xl hover:bg-slate-200 disabled:opacity-50 transition-all"
                           >
                             Cancelar
                           </button>
                           <button
                             type="button"
                             onClick={handleResetAllData}
-                            disabled={isResetting || resetConfirmText.trim().toUpperCase() !== 'RESTABLECER'}
+                            disabled={isResetting || resetStatus === 'success' || resetConfirmText.trim().toLowerCase() !== 'restablecer'}
                             className="flex-1 py-3 bg-rose-600 text-white font-black text-xs rounded-xl hover:bg-rose-700 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-md shadow-rose-600/20"
                           >
                             {isResetting ? <Loader2 className="animate-spin" size={16} /> : <Trash2 size={16} />}
-                            <span>Confirmar</span>
+                            <span>{isResetting ? 'Restableciendo...' : 'Confirmar'}</span>
                           </button>
                         </div>
                       </motion.div>
