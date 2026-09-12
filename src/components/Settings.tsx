@@ -35,6 +35,7 @@ import { sendWhatsAppMessageDirect } from '../whatsapp';
 import { TimePickerModal } from './TimePickerModal';
 import { OperationType, handleFirestoreError } from '../utils/firestoreError';
 import { useProfile } from '../context/ProfileContext';
+import { AquanovaSettingsTab } from './AquanovaSettingsTab';
 import { 
   collection, 
   query, 
@@ -97,7 +98,7 @@ interface WhatsAppBackupRecord {
   type?: string;
 }
 
-type SettingsTab = 'schedule' | 'whatsapp' | 'telegram' | 'backups' | 'categories' | 'system';
+type SettingsTab = 'schedule' | 'whatsapp' | 'telegram' | 'aquanova' | 'backups' | 'categories' | 'system';
 
 export const Settings: React.FC = () => {
   const { profile } = useProfile();
@@ -791,6 +792,22 @@ export const Settings: React.FC = () => {
         >
           <Send size={16} className={activeTab === 'telegram' ? 'text-blue-500 shrink-0' : 'text-slate-400 shrink-0'} />
           <span className="truncate">Telegram</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            sounds.playClick();
+            setActiveTab('aquanova');
+          }}
+          className={`py-3 px-2.5 rounded-xl font-extrabold text-xs transition-all flex items-center justify-center gap-1.5 ${
+            activeTab === 'aquanova'
+              ? 'bg-white text-cyan-600 shadow-sm border border-slate-200/60'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <Zap size={16} className={activeTab === 'aquanova' ? 'text-cyan-500 shrink-0' : 'text-slate-400 shrink-0'} />
+          <span className="truncate">Aquanova</span>
         </button>
 
         <button
@@ -1590,6 +1607,21 @@ export const Settings: React.FC = () => {
                 )}
               </div>
             </div>
+          </motion.div>
+        )}
+
+        {/* =================================================================== */}
+        {/* TAB: AUTOMATIZACIÓN Y SINCRONIZACIÓN AQUANOVA                       */}
+        {/* =================================================================== */}
+        {activeTab === 'aquanova' && (
+          <motion.div
+            key="tab-aquanova"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.15 }}
+          >
+            <AquanovaSettingsTab />
           </motion.div>
         )}
 

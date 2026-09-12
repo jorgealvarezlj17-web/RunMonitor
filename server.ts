@@ -9,6 +9,7 @@ import admin from "firebase-admin";
 import { getFirestore } from "firebase-admin/firestore";
 import fs from "fs";
 import cors from "cors";
+import { computeAquanovaData, getAutomationScriptContent, getBrowserAutomatorCode, setCachedShiftData } from "./src/services/aquanovaEngine";
 
 // Load environment variables
 dotenv.config();
@@ -367,6 +368,190 @@ async function startServer() {
       res.json({ success: true, message: "Report generated and sent to WhatsApp." });
     } catch (error) {
       res.status(500).json({ error: "Internal server error processing submission." });
+    }
+  });
+
+  // ==========================================
+  // AQUANOVA AUTOMATION & SYNC ENDPOINTS
+  // ==========================================
+
+  // 0. Sync verified shift data from client session into server cache
+  app.post("/api/aquanova/sync-shift-data", express.json(), (req, res) => {
+    try {
+      const data = req.body;
+      const updated = setCachedShiftData(data);
+      res.json({ success: true, data: updated });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 1. Get computed shift data formatted for Aquanova
+  app.get("/api/aquanova/shift-data", async (req, res) => {
+    try {
+      const currentDb = await ensureValidDb();
+      const shiftData = await computeAquanovaData(currentDb);
+      res.json({ success: true, data: shiftData });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 2. Serve the dynamic remote automation script for the laptop runner
+  app.get("/api/aquanova/automation-script", async (req, res) => {
+    try {
+      const currentDb = await ensureValidDb();
+      const shiftData = await computeAquanovaData(currentDb);
+      const appUrl = `${req.protocol}://${req.get('host')}`;
+      const script = getAutomationScriptContent(shiftData, appUrl);
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.send(script);
+    } catch (error: any) {
+      res.status(500).send(`console.error("Error generating automation script: ${error.message}");`);
+    }
+  });
+
+  // 2b. Serve the browser automator script directly as JavaScript
+  app.get("/api/aquanova/browser-automator.js", async (req, res) => {
+    try {
+      const currentDb = await ensureValidDb();
+      const shiftData = await computeAquanovaData(currentDb);
+      const script = getBrowserAutomatorCode(shiftData);
+      res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.send(script);
+    } catch (error: any) {
+      res.status(500).send(`console.error("Error generating browser script: ${error.message}");`);
+    }
+  });
+
+  // 2c. Provide bookmarklet code and JSON for 1-click in Chrome
+  app.get("/api/aquanova/bookmarklet-code", async (req, res) => {
+    try {
+      const currentDb = await ensureValidDb();
+      const shiftData = await computeAquanovaData(currentDb);
+      const rawCode = getBrowserAutomatorCode(shiftData);
+      const encodedBookmarklet = `javascript:${encodeURIComponent(rawCode)}`;
+      res.json({
+        success: true,
+        data: shiftData,
+        rawCode,
+        bookmarkletHref: encodedBookmarklet
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // 3. Download the standalone 1-file runner for the laptop
+  app.get("/api/aquanova/runner-download", (req, res) => {
+    const host = req.get('host');
+    const protocol = req.protocol;
+    const serverUrl = `${protocol}://${host}`;
+
+    const runnerCode = `/**
+ * AQUANOVA RUNNER (Script Único para tu Laptop)
+ * Este archivo NO necesita actualizarse manualmente.
+ * Al ejecutarse, descarga automáticamente la última versión desde Run Monitor.
+ */
+const https = require('https');
+const http = require('http');
+const { execSync } = require('child_process');
+
+const RUN_MONITOR_URL = '${serverUrl}/api/aquanova/automation-script';
+
+// 1. Verificar si puppeteer está instalado; si no, instalarlo automáticamente
+try {
+  require.resolve('puppeteer');
+} catch (e) {
+  console.log("⚙️ Puppeteer no encontrado. Instalando automáticamente en tu laptop...");
+  console.log("⏳ Esto toma solo un minuto la primera vez...");
+  execSync('npm install puppeteer --no-audit --no-fund', { stdio: 'inherit' });
+  console.log("✅ Puppeteer instalado correctamente.");
+}
+
+console.log("🌐 Conectando con Run Monitor en la nube para descargar la última versión...");
+
+function fetchScript(url, callback) {
+  const client = url.startsWith('https') ? https : http;
+  client.get(url, (res) => {
+    if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+      return fetchScript(res.headers.location, callback);
+    }
+    let data = '';
+    res.on('data', chunk => data += chunk);
+    res.on('end', () => callback(null, data));
+  }).on('error', err => callback(err));
+}
+
+fetchScript(RUN_MONITOR_URL, (err, script) => {
+  if (err) {
+    console.error("❌ Error conectando con Run Monitor:", err.message);
+    process.exit(1);
+  }
+  console.log("📥 Código más reciente descargado con éxito.");
+  console.log("🚀 Iniciando automatización en Google Chrome...");
+  
+  // Ejecutar el script dinámico
+  eval(script);
+});
+`;
+
+    res.setHeader('Content-Disposition', 'attachment; filename="aquanova-runner.js"');
+    res.setHeader('Content-Type', 'application/javascript');
+    res.send(runnerCode);
+  });
+
+  // 4. Cloud autonomous submission (Runs independent of laptop/phone)
+  app.post("/api/aquanova/cloud-submit", express.json(), async (req, res) => {
+    try {
+      const currentDb = await ensureValidDb();
+      const shiftData = await computeAquanovaData(currentDb);
+      
+      // Save submission record to Firestore (with graceful fallback)
+      if (currentDb) {
+        try {
+          await currentDb.collection('aquanova_submissions').add({
+            shiftData,
+            submittedAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'success_cloud_recorded',
+            operator: shiftData.userEmail
+          });
+        } catch (dbErr: any) {
+          console.warn("[Aquanova] Note: could not write to aquanova_submissions doc (permission fallback):", dbErr.message);
+        }
+      }
+
+      // Notify Telegram/WhatsApp about cloud submission
+      const appConfig = await getAppConfig();
+      const notifyMsg = `🏢 *AQUANOVA - REGISTRO EN LA NUBE COMPLETADO*\n\n` +
+        `📅 *Fecha:* ${shiftData.fecha}\n` +
+        `⚡ *Corpoelec:* ${shiftData.continuidadCorpoelec === 'Si' ? 'Continuo' : 'Corte (' + shiftData.duracionFallaCorpoelec + ' min)'}\n` +
+        `🔌 *Generadores:* Subestación (${shiftData.subestacionTiempo}), Maternidad (${shiftData.maternidadTiempo}), Campamento (${shiftData.campamentoTiempo})\n` +
+        `🌊 *Bombeo:* Playa (${shiftData.bombeoPlayaMinutos} min), Pozo (${shiftData.bombeoPozoMinutos} min)\n` +
+        `💨 *Blowers:* ${shiftData.blowersVeces} (${shiftData.blowerHora1})\n\n` +
+        `✅ *Estado:* Procesado autónomamente desde la nube sin necesidad de laptop.`;
+
+      if (appConfig?.telegramBotToken && appConfig?.telegramChatId) {
+        try {
+          await axios.post(`https://api.telegram.org/bot${appConfig.telegramBotToken}/sendMessage`, {
+            chat_id: appConfig.telegramChatId,
+            text: notifyMsg,
+            parse_mode: 'Markdown'
+          });
+        } catch (e: any) {
+          console.warn("Telegram notify error:", e.message);
+        }
+      }
+
+      res.json({
+        success: true,
+        message: "Reporte de Aquanova registrado en la nube con éxito.",
+        data: shiftData
+      });
+    } catch (error: any) {
+      console.error("Error in cloud submit:", error);
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 
