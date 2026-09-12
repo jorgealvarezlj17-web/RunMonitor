@@ -54,6 +54,7 @@ import {
 import { db, auth } from '../firebase';
 import { sounds } from '../utils/sounds';
 import { format } from 'date-fns';
+import { APP_VERSION } from '../version';
 
 interface Category {
   id: string;
@@ -77,6 +78,9 @@ interface AppConfig {
   telegramChatId?: string;
   autoSendWhatsAppEnabled?: boolean;
   isUpdatingApp?: boolean;
+  updateNotice?: string;
+  targetVersion?: string;
+  lastUpdatedTimestamp?: string;
 }
 
 const to12h = (time24: string) => {
@@ -2073,41 +2077,147 @@ export const Settings: React.FC = () => {
             className="space-y-6"
           >
             {/* Maintenance card */}
-            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-slate-100 text-slate-700 rounded-2xl border border-slate-200/60">
-                  <Sliders size={22} />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-slate-900">Mantenimiento de la Aplicación</h2>
-                  <p className="text-xs text-slate-500 font-medium">Notifica a los usuarios que la app está en actualización</p>
-                </div>
-              </div>
-
-              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <div className="text-xs font-bold text-amber-900">Modo de Actualización (Notificar a Todos)</div>
-                  <div className="text-[11px] text-amber-700 mt-0.5">
-                    Activa esto cuando subas cambios a GitHub y Vercel. Mostrará un aviso global arriba a todos los usuarios indicando que la app se está actualizando para que esperen o limpien la caché.
+            <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/80 shadow-xs space-y-6">
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-amber-100 text-amber-700 rounded-2xl border border-amber-200/60">
+                    <Sliders size={22} />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-900">Mantenimiento y Actualizaciones del Sistema</h2>
+                    <p className="text-xs text-slate-500 font-medium">Controla en vivo el aviso de actualización en las pantallas de todos los trabajadores y teléfonos</p>
                   </div>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    className="sr-only peer"
-                    checked={config.isUpdatingApp === true}
-                    disabled={isReadOnly || !isAdmin}
-                    onChange={(e) => setConfig({ ...config, isUpdatingApp: e.target.checked })}
-                  />
-                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
-                </label>
+
+                <span className={`px-3 py-1 text-xs font-black rounded-xl border flex items-center gap-1.5 shadow-2xs ${
+                  config.isUpdatingApp
+                    ? 'bg-amber-100 text-amber-900 border-amber-300'
+                    : 'bg-slate-100 text-slate-700 border-slate-200'
+                }`}>
+                  <span className={`w-2 h-2 rounded-full ${config.isUpdatingApp ? 'bg-amber-500 animate-pulse' : 'bg-slate-400'}`}></span>
+                  <span>{config.isUpdatingApp ? 'Aviso Activo en Pantallas' : 'Modo Normal (Sin Aviso)'}</span>
+                </span>
               </div>
 
+              {/* Status Banner */}
+              <div className={`p-4 rounded-2xl border transition-all ${
+                config.isUpdatingApp 
+                  ? 'bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-amber-300/80' 
+                  : 'bg-slate-50 border-slate-200'
+              }`}>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <div className="text-xs font-black text-slate-900 flex items-center gap-1.5">
+                      <Radio size={14} className={config.isUpdatingApp ? 'text-amber-600 animate-pulse' : 'text-slate-400'} />
+                      <span>{config.isUpdatingApp ? 'Transmisión de Aviso Activa en Firestore' : 'Aviso Desactivado'}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600">
+                      {config.isUpdatingApp
+                        ? 'Todos los teléfonos móviles y computadoras conectadas tienen actualmente la notificación visible en pantalla pidiéndoles actualizar su caché.'
+                        : 'Activa esta opción cuando realices cambios en GitHub o el sistema para que todos los usuarios sepan que una actualización está en proceso.'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      disabled={isReadOnly || !isAdmin}
+                      onClick={async () => {
+                        sounds.playClick();
+                        const nextState = !config.isUpdatingApp;
+                        const newConfig = {
+                          ...config,
+                          isUpdatingApp: nextState,
+                          updateNotice: config.updateNotice || 'Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores.',
+                          targetVersion: config.targetVersion || APP_VERSION,
+                          lastUpdatedTimestamp: new Date().toISOString()
+                        };
+                        setConfig(newConfig);
+                        try {
+                          await setDoc(doc(db, 'config', 'app_settings'), newConfig, { merge: true });
+                          sounds.playSuccess();
+                        } catch (err) {
+                          console.error('Error toggling update state:', err);
+                        }
+                      }}
+                      className={`px-4 py-2 rounded-xl text-xs font-black transition-all shadow-xs active:scale-95 ${
+                        config.isUpdatingApp
+                          ? 'bg-rose-500 hover:bg-rose-600 text-white'
+                          : 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                      }`}
+                    >
+                      {config.isUpdatingApp ? 'Desactivar Aviso' : 'Activar Aviso Global'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notice Message and Version Configuration */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <div className="md:col-span-2 space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800">
+                    Mensaje de Notificación para los Usuarios
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={config.updateNotice || ''}
+                    disabled={isReadOnly || !isAdmin}
+                    placeholder="Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores."
+                    onChange={(e) => setConfig({ ...config, updateNotice: e.target.value })}
+                    className="w-full text-xs font-medium bg-slate-50 border border-slate-200 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-slate-800 resize-none"
+                  />
+                  <p className="text-[10px] text-slate-500">
+                    Este texto se muestra en el banner flotante visible en todos los dispositivos de la planta.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-800">
+                    Versión Objetivo de Despliegue
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={config.targetVersion || APP_VERSION}
+                      disabled={isReadOnly || !isAdmin}
+                      onChange={(e) => setConfig({ ...config, targetVersion: e.target.value })}
+                      className="w-full text-xs font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-slate-800"
+                    />
+                  </div>
+                  <div className="text-[10px] text-slate-500 flex items-center justify-between">
+                    <span>Versión actual local:</span>
+                    <span className="font-mono font-bold text-slate-700">v{APP_VERSION}</span>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isReadOnly || !isAdmin}
+                    onClick={async () => {
+                      sounds.playClick();
+                      try {
+                        await setDoc(doc(db, 'config', 'app_settings'), {
+                          updateNotice: config.updateNotice || 'Actualización de sistema en curso. Se están sincronizando las últimas mejoras de control y permisos de administradores.',
+                          targetVersion: config.targetVersion || APP_VERSION,
+                          lastUpdatedTimestamp: new Date().toISOString()
+                        }, { merge: true });
+                        sounds.playSuccess();
+                        alert('¡Datos de actualización guardados y transmitidos exitosamente a todos los dispositivos!');
+                      } catch (err) {
+                        console.error('Error saving update notice:', err);
+                      }
+                    }}
+                    className="w-full mt-2 py-2 px-3 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl transition-all shadow-xs"
+                  >
+                    Guardar Texto y Versión
+                  </button>
+                </div>
+              </div>
+
+              {/* Cache Cleaning */}
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <div className="text-xs font-bold text-slate-900">Limpieza de Caché Local</div>
+                  <div className="text-xs font-bold text-slate-900">Limpieza Profunda de Caché en este Dispositivo</div>
                   <div className="text-[11px] text-slate-500 mt-0.5">
-                    Fuerza la descarga de la última versión de la aplicación y borra Service Workers guardados en tu dispositivo.
+                    Elimina Service Workers, vacía CacheStorage y fuerza la descarga de los archivos nuevos más recientes sin cerrar tu sesión de usuario.
                   </div>
                 </div>
                 <button
@@ -2120,12 +2230,24 @@ export const Settings: React.FC = () => {
                         await reg.unregister();
                       }
                     }
-                    localStorage.clear();
-                    window.location.reload();
+                    if ('caches' in window) {
+                      const cacheNames = await caches.keys();
+                      for (const name of cacheNames) {
+                        await caches.delete(name);
+                      }
+                    }
+                    try {
+                      localStorage.removeItem('app_version');
+                      sessionStorage.clear();
+                    } catch (e) {
+                      // ignore
+                    }
+                    window.location.replace(window.location.origin + window.location.pathname + '?reload=' + Date.now());
                   }}
-                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-all whitespace-nowrap self-start sm:self-auto"
+                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold rounded-xl text-xs transition-all whitespace-nowrap self-start sm:self-auto flex items-center gap-1.5 shadow-2xs"
                 >
-                  Borrar Caché y Recargar
+                  <RefreshCw size={13} />
+                  <span>Limpiar y Recargar Ahora</span>
                 </button>
               </div>
             </div>

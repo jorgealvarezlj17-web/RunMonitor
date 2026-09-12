@@ -21,8 +21,7 @@ import { format } from 'date-fns';
 import { useProfile, isMasterAdminEmail } from './context/ProfileContext';
 import { sounds } from './utils/sounds';
 import { AutoReportGenerator } from './components/AutoReportGenerator';
-
-const APP_VERSION = "1.2.0";
+import { APP_VERSION } from './version';
 
 export default function App() {
   const [user, setUser] = useState<User | any | null>(() => {

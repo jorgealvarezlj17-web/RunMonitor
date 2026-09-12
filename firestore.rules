@@ -55,7 +55,8 @@ service cloud.firestore {
     }
 
     match /config/app_settings {
-      allow read, write: if isAuthenticated();
+      allow read: if true;
+      allow write: if isAuthenticated();
     }
 
     match /config/{configId} {

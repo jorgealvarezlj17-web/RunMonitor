@@ -91,6 +91,11 @@ export const TeamPanel: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'users' | 'whitelist'>('users');
   const [userFilter, setUserFilter] = useState<'all' | 'online' | 'offline' | 'admin' | 'operator'>('all');
   
+  // App Update Mode status
+  const [isUpdatingApp, setIsUpdatingApp] = useState(false);
+  const [updateNotice, setUpdateNotice] = useState('');
+  const [targetVersion, setTargetVersion] = useState('');
+  
   // Realtime tick to keep live timestamps and active status fresh every second
   const [, setTick] = useState(0);
 
@@ -154,9 +159,22 @@ export const TeamPanel: React.FC = () => {
       console.error('Error fetching allowed_emails:', err);
     });
 
+    // 3. Listen to app_settings for real-time update notice status
+    const unsubscribeSettings = onSnapshot(doc(db, 'config', 'app_settings'), (snap) => {
+      if (snap.exists()) {
+        const d = snap.data();
+        setIsUpdatingApp(d.isUpdatingApp === true);
+        setUpdateNotice(d.updateNotice || '');
+        setTargetVersion(d.targetVersion || '');
+      }
+    }, (err) => {
+      console.warn('Could not fetch app_settings in TeamPanel:', err);
+    });
+
     return () => {
       unsubscribeProfiles();
       unsubscribeEmails();
+      unsubscribeSettings();
     };
   }, []);
 
@@ -606,6 +624,54 @@ export const TeamPanel: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Real-time Update Notice Banner for Admins */}
+      {isUpdatingApp && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border-2 border-amber-400/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-500 text-slate-950 rounded-xl font-black shrink-0">
+              <Radio size={18} className="animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h4 className="text-xs font-black text-amber-950 uppercase tracking-wider">
+                  Aviso de Actualización Transmitiéndose en Vivo
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-200 text-amber-900 border border-amber-300">
+                  {targetVersion ? `Meta: v${targetVersion}` : 'En despliegue'}
+                </span>
+              </div>
+              <p className="text-xs text-amber-900/90 mt-0.5 font-medium leading-relaxed">
+                {updateNotice || 'Se han realizado nuevas mejoras en el sistema. Los usuarios están recibiendo el aviso en sus pantallas.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+            <button
+              onClick={async () => {
+                sounds.playClick();
+                try {
+                  await updateDoc(doc(db, 'config', 'app_settings'), {
+                    isUpdatingApp: false
+                  });
+                  sounds.playSuccess();
+                  setFeedbackMsg({
+                    type: 'success',
+                    text: 'Aviso de actualización finalizado exitosamente para todos los usuarios.'
+                  });
+                  setTimeout(() => setFeedbackMsg(null), 3500);
+                } catch (e) {
+                  console.error('Error stopping update notice:', e);
+                }
+              }}
+              className="px-3.5 py-1.5 bg-white border border-amber-300 hover:bg-amber-50 text-amber-950 text-xs font-bold rounded-xl shadow-2xs transition-all active:scale-95"
+            >
+              Finalizar Aviso
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Global Feedback Alert */}
       <AnimatePresence>
