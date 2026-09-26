@@ -23,7 +23,7 @@ service cloud.firestore {
 
     // Rules
     match /test/connection {
-      allow read: if true;
+      allow read, write: if true;
     }
 
     match /profiles/{userId} {
@@ -55,12 +55,7 @@ service cloud.firestore {
     }
 
     match /config/app_settings {
-      allow read: if true;
-      allow write: if isAuthenticated();
-    }
-
-    match /config/{configId} {
-      allow read, write: if isAuthenticated();
+      allow read, write: if true;
     }
 
     match /equipment/{equipmentId} {

@@ -127,18 +127,35 @@ export default async function handler(req, res) {
 
     try {
       if (settings.telegramBotToken && settings.telegramChatId) {
-          const telegramUrl = `https://api.telegram.org/bot${settings.telegramBotToken}/sendMessage`;
-          telegramPromise = fetch(telegramUrl, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                  chat_id: settings.telegramChatId,
-                  text: reportText,
-                  parse_mode: 'Markdown'
-              })
-          }).then(r => r.json()).then(d => {
-              if (d.ok) { sendSuccess = true; console.log("Telegram OK"); }
-          }).catch(e => console.error("Telegram error:", e));
+          const tToken = String(settings.telegramBotToken).trim();
+          const tChatId = String(settings.telegramChatId).trim();
+          const telegramUrl = `https://api.telegram.org/bot${tToken}/sendMessage`;
+          
+          telegramPromise = (async () => {
+              try {
+                  const r = await fetch(telegramUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ chat_id: tChatId, text: reportText, parse_mode: 'Markdown' })
+                  });
+                  const d = await r.json().catch(() => ({}));
+                  if (r.ok && d.ok) { sendSuccess = true; console.log("Telegram OK"); return; }
+              } catch (e) {
+                  console.warn("Telegram Markdown send failed:", e);
+              }
+              try {
+                  const r2 = await fetch(telegramUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ chat_id: tChatId, text: reportText })
+                  });
+                  const d2 = await r2.json().catch(() => ({}));
+                  if (r2.ok && d2.ok) { sendSuccess = true; console.log("Telegram plain text fallback OK"); }
+                  else { console.error("Telegram fallback error:", d2); }
+              } catch (e2) {
+                  console.error("Telegram fallback error:", e2);
+              }
+          })();
       }
 
       // WhatsApp send

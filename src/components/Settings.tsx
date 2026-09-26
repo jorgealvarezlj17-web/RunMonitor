@@ -297,7 +297,7 @@ export const Settings: React.FC = () => {
         setTestMessage('✅ ¡Conexión exitosa en Telegram! El mensaje de prueba ha sido enviado.');
       } else {
         setTestResult('error');
-        setTestMessage(`❌ Error de conexión en Telegram: Revisa tu Token y Chat ID.`);
+        setTestMessage(`❌ Error de conexión en Telegram: ${result.error || 'Revisa tu Token y Chat ID.'}`);
       }
     } catch (err: any) {
       setTestResult('error');
@@ -619,113 +619,101 @@ export const Settings: React.FC = () => {
     setIsResetting(true);
     setResetStatus('idle');
     setResetErrorMessage(null);
-    setResetProgressPercent(5);
-    setResetProgressMessage('Conectando con la base de datos...');
+    setResetProgressPercent(10);
+    setResetProgressMessage('Consultando registros en paralelo...');
 
     try {
-      // 1. Fetch all documents in logs
-      setResetProgressMessage('Consultando historial de encendidos y apagados...');
-      const logsSnap = await getDocs(collection(db, 'logs'));
+      // 1. Fetch all collections simultaneously in parallel
+      const [logsSnap, powerSnap, equipSnap] = await Promise.all([
+        getDocs(collection(db, 'logs')),
+        getDocs(collection(db, 'power_events')),
+        getDocs(collection(db, 'equipment'))
+      ]);
+
       const totalLogs = logsSnap.docs.length;
-      setResetProgressPercent(15);
-
-      // 1.5. Fetch all documents in power_events
-      setResetProgressMessage('Consultando historial de eventos de Corpoelec...');
-      const powerSnap = await getDocs(collection(db, 'power_events'));
       const totalPower = powerSnap.docs.length;
-      setResetProgressPercent(25);
-
-      // 2. Fetch all equipment
-      setResetProgressMessage('Consultando equipos de planta...');
-      const equipSnap = await getDocs(collection(db, 'equipment'));
       const totalEquip = equipSnap.docs.length;
-      setResetProgressPercent(35);
+      const totalOperations = totalLogs + totalPower + totalEquip + 3;
 
-      const CHUNK_SIZE = 40;
+      setResetProgressPercent(40);
+      setResetProgressMessage(`Preparando restablecimiento de ${totalOperations} registros...`);
 
-      // 3. Delete logs in chunks
-      if (totalLogs > 0) {
-        for (let i = 0; i < totalLogs; i += CHUNK_SIZE) {
-          const chunk = logsSnap.docs.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          chunk.forEach((d) => batch.delete(d.ref));
-          await batch.commit();
-          const currentCount = Math.min(i + chunk.length, totalLogs);
-          const percent = Math.min(60, 35 + Math.round((currentCount / totalLogs) * 25));
-          setResetProgressPercent(percent);
-          setResetProgressMessage(`Borrando historial de encendidos (${currentCount}/${totalLogs})...`);
+      // 2. Build operations and pack them into high-capacity batches (up to 400 ops per batch)
+      const BATCH_SIZE = 400;
+      const batches: ReturnType<typeof writeBatch>[] = [];
+      let currentBatch = writeBatch(db);
+      let opCount = 0;
+
+      const addOperation = (applyOp: (batch: ReturnType<typeof writeBatch>) => void) => {
+        if (opCount >= BATCH_SIZE) {
+          batches.push(currentBatch);
+          currentBatch = writeBatch(db);
+          opCount = 0;
         }
-      } else {
-        setResetProgressPercent(60);
-      }
+        applyOp(currentBatch);
+        opCount++;
+      };
 
-      // 4. Delete power_events in chunks
-      if (totalPower > 0) {
-        for (let i = 0; i < totalPower; i += CHUNK_SIZE) {
-          const chunk = powerSnap.docs.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          chunk.forEach((d) => batch.delete(d.ref));
-          await batch.commit();
-          const currentCount = Math.min(i + chunk.length, totalPower);
-          const percent = Math.min(80, 60 + Math.round((currentCount / totalPower) * 20));
-          setResetProgressPercent(percent);
-          setResetProgressMessage(`Borrando fallas eléctricas (${currentCount}/${totalPower})...`);
-        }
-      } else {
-        setResetProgressPercent(80);
-      }
+      // Add log deletions
+      logsSnap.docs.forEach((d) => {
+        addOperation((batch) => batch.delete(d.ref));
+      });
 
-      // 5. Reset all equipment to off and 0 hours
+      // Add power_event deletions
+      powerSnap.docs.forEach((d) => {
+        addOperation((batch) => batch.delete(d.ref));
+      });
+
+      // Add equipment resets
       const now = Timestamp.now();
-      if (totalEquip > 0) {
-        for (let i = 0; i < totalEquip; i += CHUNK_SIZE) {
-          const chunk = equipSnap.docs.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          chunk.forEach((d) => {
-            batch.update(d.ref, {
-              status: 'off',
-              totalUsageTime: 0,
-              lastTurnedOn: null,
-              lastOffReason: 'Restablecimiento general de planta',
-              lastUpdated: now
-            });
+      equipSnap.docs.forEach((d) => {
+        addOperation((batch) => {
+          batch.update(d.ref, {
+            status: 'off',
+            totalUsageTime: 0,
+            lastTurnedOn: null,
+            lastOffReason: 'Restablecimiento general de planta',
+            lastUpdated: now
           });
-          await batch.commit();
-          const currentCount = Math.min(i + chunk.length, totalEquip);
-          const percent = Math.min(95, 80 + Math.round((currentCount / totalEquip) * 15));
-          setResetProgressPercent(percent);
-          setResetProgressMessage(`Apagando equipos y reseteando horas a 0 (${currentCount}/${totalEquip})...`);
-        }
-      } else {
-        setResetProgressPercent(95);
+        });
+      });
+
+      // Add draft configurations reset
+      addOperation((batch) => {
+        batch.set(doc(db, 'config', 'current_shift_observations'), { observations: '', lastUpdated: now }, { merge: true });
+      });
+      addOperation((batch) => {
+        batch.set(doc(db, 'config', 'current_shift_maintenance'), { preventivos: [], correctivos: [], inoperativos: [], lastUpdated: now }, { merge: true });
+      });
+      addOperation((batch) => {
+        batch.set(doc(db, 'config', 'current_shift_tanks'), { lastUpdated: now }, { merge: true });
+      });
+
+      if (opCount > 0) {
+        batches.push(currentBatch);
       }
 
-      // 6. Reset draft observations/maintenance if any
-      setResetProgressMessage('Limpiando borradores de turno...');
-      try {
-        const batchConfig = writeBatch(db);
-        batchConfig.set(doc(db, 'config', 'current_shift_observations'), { observations: '', lastUpdated: now }, { merge: true });
-        batchConfig.set(doc(db, 'config', 'current_shift_maintenance'), { preventivos: [], correctivos: [], inoperativos: [], lastUpdated: now }, { merge: true });
-        await batchConfig.commit();
-      } catch (cfgErr) {
-        console.warn('Non-critical config reset notice:', cfgErr);
-      }
+      setResetProgressPercent(70);
+      setResetProgressMessage(`Ejecutando limpieza ultra rápida (${batches.length} lote${batches.length > 1 ? 's' : ''} en paralelo)...`);
+
+      // 3. Commit ALL batches concurrently in parallel!
+      await Promise.all(batches.map((batch) => batch.commit()));
 
       setResetProgressPercent(100);
-      setResetProgressMessage('¡Restablecimiento completado con éxito!');
+      setResetProgressMessage('¡Restablecimiento completado al instante!');
       sounds.playSuccess();
       setResetStatus('success');
 
-      // Keep success message visible briefly before closing modal
+      // Snappy smooth close
       setTimeout(() => {
         setShowResetConfirm(false);
         setResetConfirmText('');
         setIsResetting(false);
         setResetProgressPercent(0);
         setResetProgressMessage('');
-      }, 1600);
+      }, 700);
 
-      setTimeout(() => setResetStatus('idle'), 6000);
+      setTimeout(() => setResetStatus('idle'), 5000);
     } catch (error: any) {
       console.error('Error resetting operation logs:', error);
       const errMsg = error?.message || 'Error de permisos o conexión con la base de datos.';

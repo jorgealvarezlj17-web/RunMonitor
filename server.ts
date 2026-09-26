@@ -129,20 +129,52 @@ async function startServer() {
     }
   }
 
+  // Helper function to send Telegram messages safely with fallback for Markdown parse errors (HTTP 400)
+  async function sendTelegramMessageServer(botToken: string, chatId: string, message: string): Promise<boolean> {
+    const token = String(botToken || '').trim();
+    const cId = String(chatId || '').trim();
+    if (!token || !cId) return false;
+
+    const tUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+
+    // 1. Try Markdown mode
+    try {
+      const response = await axios.post(tUrl, {
+        chat_id: cId,
+        text: message,
+        parse_mode: 'Markdown'
+      }, { timeout: 15000 });
+      if (response.data?.ok) return true;
+    } catch (e: any) {
+      const errDetail = e.response?.data ? JSON.stringify(e.response.data) : e.message;
+      console.warn(`[Telegram] Markdown send failed (${errDetail}), retrying plain text...`);
+    }
+
+    // 2. Retry plain text mode (handles status 400 when Markdown entity parsing fails)
+    try {
+      const response = await axios.post(tUrl, {
+        chat_id: cId,
+        text: message
+      }, { timeout: 15000 });
+      if (response.data?.ok) {
+        console.log("[Telegram] Plain text fallback send succeeded");
+        return true;
+      }
+    } catch (e2: any) {
+      const errDetail2 = e2.response?.data ? JSON.stringify(e2.response.data) : e2.message;
+      console.error(`[Telegram] Plain text fallback error in server: ${errDetail2}`);
+    }
+
+    return false;
+  }
+
   // Helper function to send WhatsApp message supporting Render Baileys API, Green API, Whapi, etc.
   async function sendWhatsAppMessage(appConfig: any, message: string, customRecipient?: string) {
     let telegramSuccess = false;
     let telegramPromise = Promise.resolve();
     if (appConfig?.telegramBotToken && appConfig?.telegramChatId) {
-       const tUrl = `https://api.telegram.org/bot${appConfig.telegramBotToken}/sendMessage`;
-       telegramPromise = axios.post(tUrl, {
-           chat_id: appConfig.telegramChatId,
-           text: message,
-           parse_mode: 'Markdown'
-       }).then(r => {
-           if(r.data.ok) telegramSuccess = true;
-       }).catch(e => {
-           console.error("Telegram error in server:", e.message);
+       telegramPromise = sendTelegramMessageServer(appConfig.telegramBotToken, appConfig.telegramChatId, message).then(ok => {
+          if (ok) telegramSuccess = true;
        });
     }
 
@@ -533,15 +565,7 @@ fetchScript(RUN_MONITOR_URL, (err, script) => {
         `✅ *Estado:* Procesado autónomamente desde la nube sin necesidad de laptop.`;
 
       if (appConfig?.telegramBotToken && appConfig?.telegramChatId) {
-        try {
-          await axios.post(`https://api.telegram.org/bot${appConfig.telegramBotToken}/sendMessage`, {
-            chat_id: appConfig.telegramChatId,
-            text: notifyMsg,
-            parse_mode: 'Markdown'
-          });
-        } catch (e: any) {
-          console.warn("Telegram notify error:", e.message);
-        }
+        await sendTelegramMessageServer(appConfig.telegramBotToken, appConfig.telegramChatId, notifyMsg);
       }
 
       res.json({

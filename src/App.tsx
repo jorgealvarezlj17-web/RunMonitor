@@ -15,6 +15,7 @@ import { StatsPanel } from './components/StatsPanel';
 import Settings from './components/Settings';
 import { TeamPanel } from './components/TeamPanel';
 import { UpdateBanner } from './components/UpdateBanner';
+import { UpdatePauseButton } from './components/UpdatePauseButton';
 import { Activity, ShieldCheck, Menu, X, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
@@ -347,12 +348,13 @@ export default function App() {
                   </div>
 
                   {/* Indicador de Estado centrado */}
-                  <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center">
+                  <div className="absolute left-1/2 -translate-x-1/2 flex items-center justify-center gap-2">
                     <ConnectionStatus />
                   </div>
 
-                  {/* Perfil a la derecha */}
-                  <div className="flex items-center gap-3">
+                  {/* Acciones de administración y Perfil a la derecha */}
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <UpdatePauseButton />
                     <Auth />
                   </div>
                 </div>
