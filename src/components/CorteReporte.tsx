@@ -53,19 +53,7 @@ interface LogEntry {
   reason?: string;
 }
 
-const TankGrid = ({
-  tanquesAireacion,
-  tanquesMovimiento,
-  toggleTank,
-  isReadOnly,
-  onLoadPrevious,
-  onClearAll,
-  hasPrevious,
-  availableTanks,
-  setAvailableTanks,
-  onToggleAvailableTank,
-  isAdmin = false
-}: {
+interface TankGridProps {
   tanquesAireacion: string[];
   tanquesMovimiento: string[];
   toggleTank: (type: 'aireacion' | 'movimiento', tankId: string) => void;
@@ -74,14 +62,35 @@ const TankGrid = ({
   onClearAll: () => void;
   hasPrevious: boolean;
   availableTanks: string[];
-  setAvailableTanks: React.Dispatch<React.SetStateAction<string[]>>;
-  onToggleAvailableTank?: (tankId: string) => void;
+  onToggleAvailableTank: (tankId: string) => void;
+  onSelectAllAvailable: () => void;
+  onDeselectAllAvailable: () => void;
+  isConfigMode: boolean;
+  setIsConfigMode: (val: boolean) => void;
+  onSaveConfig: () => void;
   isAdmin?: boolean;
+}
+
+const TankGrid: React.FC<TankGridProps> = ({
+  tanquesAireacion,
+  tanquesMovimiento,
+  toggleTank,
+  isReadOnly,
+  onLoadPrevious,
+  onClearAll,
+  hasPrevious,
+  availableTanks,
+  onToggleAvailableTank,
+  onSelectAllAvailable,
+  onDeselectAllAvailable,
+  isConfigMode,
+  setIsConfigMode,
+  onSaveConfig,
+  isAdmin = false
 }) => {
   const TANK_NUMBERS = Array.from({ length: 60 }, (_, i) => i + 1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showOnlyActive, setShowOnlyActive] = useState(false);
-  const [isConfigMode, setIsConfigMode] = useState(false);
 
   useEffect(() => {
     const savedScroll = sessionStorage.getItem('tankGridScrollPos');
@@ -112,7 +121,7 @@ const TankGrid = ({
             type="button"
             onClick={onLoadPrevious}
             disabled={!hasPrevious}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 hover:border-cyan-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm active:scale-95"
           >
             <RefreshCw size={14} /> Cargar turno anterior
           </button>
@@ -120,14 +129,14 @@ const TankGrid = ({
             type="button"
             onClick={onClearAll}
             disabled={tanquesAireacion.length === 0 && tanquesMovimiento.length === 0}
-            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 hover:border-red-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm"
+            className="px-4 py-2 bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-xl hover:bg-slate-50 hover:border-red-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-sm active:scale-95"
           >
             <Eraser size={14} /> Limpiar todos
           </button>
           <button
             type="button"
             onClick={() => setShowOnlyActive(!showOnlyActive)}
-            className={`px-4 py-2 border text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm ${
+            className={`px-4 py-2 border text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm active:scale-95 ${
               showOnlyActive 
                 ? 'bg-cyan-500 border-cyan-600 text-white' 
                 : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-cyan-500/50'
@@ -138,20 +147,63 @@ const TankGrid = ({
           {!isReadOnly && (
             <button
               type="button"
-              onClick={() => setIsConfigMode(!isConfigMode)}
-              className={`px-4 py-2 border text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm ${
+              onClick={() => {
+                if (isConfigMode) {
+                  onSaveConfig();
+                  setIsConfigMode(false);
+                } else {
+                  setIsConfigMode(true);
+                }
+              }}
+              className={`px-4 py-2 border text-xs font-bold rounded-xl transition-all flex items-center gap-2 shadow-sm active:scale-95 ${
                 isConfigMode 
-                  ? 'bg-amber-500 border-amber-600 text-white' 
+                  ? 'bg-amber-500 border-amber-600 text-white shadow-amber-500/20' 
                   : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-amber-500/50'
               }`}
             >
-              <Settings size={14} /> {isConfigMode ? 'Finalizar configuración' : 'Configurar tanques físicos'}
+              <Settings size={14} /> {isConfigMode ? 'Guardar y Salir' : 'Configurar tanques físicos'}
             </button>
           )}
         </div>
         {isConfigMode && !isReadOnly && (
-          <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-medium">
-            <p>MODO CONFIGURACIÓN: Toca los tanques para marcarlos como "existentes" o "no existentes" en la planta. Los que desmarques no aparecerán en el reporte diario.</p>
+          <div className="mt-3 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900 animate-fadeIn">
+            <div className="flex items-center gap-2.5">
+              <Settings size={20} className="text-amber-600 shrink-0" />
+              <div>
+                <span className="font-black text-amber-950 uppercase tracking-wide">
+                  Configuración de Tanques Físicos
+                </span>
+                <p className="text-[11px] text-amber-800 mt-0.5 font-medium">
+                  Toca los tanques para marcarlos o desmarcarlos ({availableTanks.length} de 60 existentes). Los que desmarques no aparecerán en la lista ni en los reportes de turno.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 flex-wrap">
+              <button
+                type="button"
+                onClick={onSelectAllAvailable}
+                className="px-3 py-1.5 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 text-[11px] font-bold rounded-xl shadow-xs transition-all active:scale-95"
+              >
+                Marcar todos
+              </button>
+              <button
+                type="button"
+                onClick={onDeselectAllAvailable}
+                className="px-3 py-1.5 bg-white border border-amber-300 hover:bg-amber-50 text-amber-800 text-[11px] font-bold rounded-xl shadow-xs transition-all active:scale-95"
+              >
+                Desmarcar todos
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onSaveConfig();
+                  setIsConfigMode(false);
+                }}
+                className="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center gap-1.5 active:scale-95"
+              >
+                <CheckCircle2 size={15} /> Guardar y Salir
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -178,29 +230,32 @@ const TankGrid = ({
           const isMovOn = tanquesMovimiento.includes(id);
           
           return (
-            <div key={id} id={`tank-${num}`} className={`flex flex-col items-center gap-2 transition-all duration-500 ${!isAvailable && !isConfigMode ? 'hidden' : ''}`}>
+            <div key={id} id={`tank-${num}`} className={`flex flex-col items-center gap-2 transition-all duration-300 ${!isAvailable && !isConfigMode ? 'hidden' : ''}`}>
               <div className={`relative w-24 h-24 rounded-full overflow-hidden border-4 shadow-md flex select-none transition-all ${
                 isConfigMode
-                  ? (isAvailable ? 'border-amber-400 bg-white' : 'border-slate-200 bg-slate-100 opacity-40')
+                  ? (isAvailable 
+                      ? 'border-emerald-500 bg-emerald-50/70 shadow-emerald-500/20' 
+                      : 'border-slate-300 bg-slate-100 opacity-45')
                   : 'border-white bg-slate-100'
               }`}>
                 {isConfigMode ? (
-                  <div 
-                    onClick={() => {
-                      if (onToggleAvailableTank) {
-                        onToggleAvailableTank(id);
-                      } else {
-                        setAvailableTanks(prev => 
-                          prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]
-                        );
-                      }
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      sounds.playClick();
+                      onToggleAvailableTank(id);
                     }}
-                    className="w-full h-full flex items-center justify-center cursor-pointer"
+                    title={`Tanque ${num}: Toca para ${isAvailable ? 'Desmarcar (No existe)' : 'Marcar (Existe)'}`}
+                    className="w-full h-full flex flex-col items-center justify-center pt-4 cursor-pointer transition-transform active:scale-95 bg-transparent border-0 outline-none"
                   >
-                    <span className={`text-[10px] font-black uppercase ${isAvailable ? 'text-amber-600' : 'text-slate-400'}`}>
-                      {isAvailable ? 'EXISTENTE' : 'NO EXISTE'}
+                    <span className={`text-[10px] font-black uppercase tracking-wider ${
+                      isAvailable ? 'text-emerald-700 font-bold' : 'text-slate-400'
+                    }`}>
+                      {isAvailable ? '✓ EXISTE' : '✕ NO EXISTE'}
                     </span>
-                  </div>
+                  </button>
                 ) : (
                   <>
                     {/* Left Half - Aireación (AIR) */}
@@ -248,7 +303,7 @@ const TankGrid = ({
                 <div className="absolute inset-x-0 top-1.5 flex justify-center pointer-events-none">
                   <span className={`font-black text-[10px] shadow-sm px-2 py-0.5 rounded-full border transition-all ${
                     isConfigMode
-                      ? (isAvailable ? 'bg-amber-100 text-amber-900 border-amber-200' : 'bg-slate-200 text-slate-500 border-slate-300')
+                      ? (isAvailable ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs' : 'bg-slate-300 text-slate-600 border-slate-300')
                       : 'bg-white/95 text-slate-800 border-slate-200 shadow-slate-200/50'
                   }`}>
                     T-{num}
@@ -292,33 +347,138 @@ export const CorteReporte: React.FC = () => {
   const [prevTanquesAireacion, setPrevTanquesAireacion] = useState<string[]>([]);
   const [prevTanquesMovimiento, setPrevTanquesMovimiento] = useState<string[]>([]);
   
+  const [isConfigMode, setIsConfigMode] = useState(false);
+  const isConfigModeRef = useRef(false);
+  useEffect(() => {
+    isConfigModeRef.current = isConfigMode;
+  }, [isConfigMode]);
+
   const [availableTanks, setAvailableTanks] = useState<string[]>(() => {
     const saved = localStorage.getItem('plantAvailableTanks');
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
     return Array.from({ length: 60 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
   });
 
-  const toggleAvailableTank = async (tankId: string) => {
-    if (isReadOnly) return;
-    const newAvailable = availableTanks.includes(tankId)
-      ? availableTanks.filter(t => t !== tankId)
-      : [...availableTanks, tankId];
+  const availableTanksRef = useRef<string[]>(availableTanks);
+  useEffect(() => {
+    availableTanksRef.current = availableTanks;
+  }, [availableTanks]);
 
-    setAvailableTanks(newAvailable);
-    localStorage.setItem('plantAvailableTanks', JSON.stringify(newAvailable));
+  const plantTanksDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
+  const persistPlantTanksDebounced = (tanksToSave: string[]) => {
+    if (plantTanksDebounceRef.current) {
+      clearTimeout(plantTanksDebounceRef.current);
+    }
+    plantTanksDebounceRef.current = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, 'config', 'plant_tanks'), {
+          availableTanks: tanksToSave,
+          lastUpdated: serverTimestamp()
+        }, { merge: true });
+      } catch (e) {
+        console.error("Error saving plant_tanks to Firestore:", e);
+      }
+    }, 400);
+  };
+
+  const flushPlantTanks = async () => {
+    if (plantTanksDebounceRef.current) {
+      clearTimeout(plantTanksDebounceRef.current);
+      plantTanksDebounceRef.current = null;
+    }
     try {
       await setDoc(doc(db, 'config', 'plant_tanks'), {
-        availableTanks: newAvailable,
+        availableTanks: availableTanksRef.current,
         lastUpdated: serverTimestamp()
       }, { merge: true });
+      sounds.playSuccess();
     } catch (e) {
       console.error("Error saving plant_tanks to Firestore:", e);
     }
+  };
+
+  const toggleAvailableTank = (tankId: string) => {
+    if (isReadOnly) return;
+    
+    // Read from synchronous ref so rapid taps never use stale state or re-mark tanks
+    const current = availableTanksRef.current;
+    const isCurrentlyIncluded = current.includes(tankId);
+    const newAvailable = isCurrentlyIncluded
+      ? current.filter(t => t !== tankId)
+      : [...current, tankId].sort((a, b) => a.localeCompare(b));
+
+    // Update ref immediately
+    availableTanksRef.current = newAvailable;
+
+    // Update state
+    setAvailableTanks(newAvailable);
+
+    // Persist locally
+    try {
+      localStorage.setItem('plantAvailableTanks', JSON.stringify(newAvailable));
+    } catch (e) {}
+
+    // If unmarked (removed), also remove from active shift tanks if it was active
+    if (isCurrentlyIncluded) {
+      let changed = false;
+      let newAir = tanquesAireacion;
+      let newMov = tanquesMovimiento;
+      if (tanquesAireacion.includes(tankId)) {
+        newAir = tanquesAireacion.filter(t => t !== tankId);
+        setTanquesAireacion(newAir);
+        changed = true;
+      }
+      if (tanquesMovimiento.includes(tankId)) {
+        newMov = tanquesMovimiento.filter(t => t !== tankId);
+        setTanquesMovimiento(newMov);
+        changed = true;
+      }
+      if (changed) {
+        setDoc(doc(db, 'config', 'current_shift_tanks'), {
+          tanquesAireacion: newAir,
+          tanquesMovimiento: newMov,
+          lastUpdated: serverTimestamp()
+        }, { merge: true }).catch(console.error);
+      }
+    }
+
+    // Persist debounced to Firestore
+    persistPlantTanksDebounced(newAvailable);
+  };
+
+  const selectAllAvailableTanks = () => {
+    if (isReadOnly) return;
+    const all = Array.from({ length: 60 }, (_, i) => `T${String(i + 1).padStart(3, '0')}`);
+    availableTanksRef.current = all;
+    setAvailableTanks(all);
+    try {
+      localStorage.setItem('plantAvailableTanks', JSON.stringify(all));
+    } catch (e) {}
+    persistPlantTanksDebounced(all);
+  };
+
+  const deselectAllAvailableTanks = () => {
+    if (isReadOnly) return;
+    const none: string[] = [];
+    availableTanksRef.current = none;
+    setAvailableTanks(none);
+    try {
+      localStorage.setItem('plantAvailableTanks', JSON.stringify(none));
+    } catch (e) {}
+    setTanquesAireacion([]);
+    setTanquesMovimiento([]);
+    setDoc(doc(db, 'config', 'current_shift_tanks'), {
+      tanquesAireacion: [],
+      tanquesMovimiento: [],
+      lastUpdated: serverTimestamp()
+    }, { merge: true }).catch(console.error);
+    persistPlantTanksDebounced(none);
   };
 
   const [loading, setLoading] = useState(false);
@@ -356,12 +516,15 @@ export const CorteReporte: React.FC = () => {
 
   const loadPreviousTanks = () => {
     if (isReadOnly) return;
-    setTanquesAireacion(prevTanquesAireacion);
-    setTanquesMovimiento(prevTanquesMovimiento);
+    const currentAvailable = availableTanksRef.current;
+    const validAir = prevTanquesAireacion.filter(t => currentAvailable.includes(t));
+    const validMov = prevTanquesMovimiento.filter(t => currentAvailable.includes(t));
+    setTanquesAireacion(validAir);
+    setTanquesMovimiento(validMov);
     try {
       setDoc(doc(db, 'config', 'current_shift_tanks'), {
-        tanquesAireacion: prevTanquesAireacion,
-        tanquesMovimiento: prevTanquesMovimiento,
+        tanquesAireacion: validAir,
+        tanquesMovimiento: validMov,
         lastUpdated: serverTimestamp()
       }, { merge: true });
     } catch (e) {
@@ -447,9 +610,14 @@ export const CorteReporte: React.FC = () => {
     });
 
     const unsubscribePlantTanks = onSnapshot(doc(db, 'config', 'plant_tanks'), (docSnap) => {
+      // Do not overwrite while user is actively toggling in config mode or if local writes are pending
+      if (isConfigModeRef.current || docSnap.metadata.hasPendingWrites) {
+        return;
+      }
       if (docSnap.exists()) {
         const data = docSnap.data();
-        if (Array.isArray(data.availableTanks) && data.availableTanks.length > 0) {
+        if (Array.isArray(data.availableTanks)) {
+          availableTanksRef.current = data.availableTanks;
           setAvailableTanks(data.availableTanks);
           try {
             localStorage.setItem('plantAvailableTanks', JSON.stringify(data.availableTanks));
@@ -854,13 +1022,16 @@ export const CorteReporte: React.FC = () => {
         text += powerEventsText;
       }
 
-      if (tanquesAireacion.length > 0 || tanquesMovimiento.length > 0) {
+      const validAir = tanquesAireacion.filter(t => availableTanksRef.current.includes(t));
+      const validMov = tanquesMovimiento.filter(t => availableTanksRef.current.includes(t));
+
+      if (validAir.length > 0 || validMov.length > 0) {
         text += `_ESTADO CHAPALETAS / TANQUES:_\n`;
-        if (tanquesAireacion.length > 0) {
-          text += `• Aireación: ${tanquesAireacion.join(', ')}\n`;
+        if (validAir.length > 0) {
+          text += `• Aireación: ${validAir.join(', ')}\n`;
         }
-        if (tanquesMovimiento.length > 0) {
-          text += `• Movimiento: ${tanquesMovimiento.join(', ')}\n`;
+        if (validMov.length > 0) {
+          text += `• Movimiento: ${validMov.join(', ')}\n`;
         }
         text += `━━━━━━━━━━━━━━━━━━━━\n`;
       }
@@ -891,8 +1062,8 @@ export const CorteReporte: React.FC = () => {
           lastUpdated: serverTimestamp()
         }, { merge: true }),
         setDoc(doc(db, 'config', 'current_shift_tanks'), {
-          tanquesAireacion,
-          tanquesMovimiento,
+          tanquesAireacion: validAir,
+          tanquesMovimiento: validMov,
           lastUpdated: serverTimestamp()
         }, { merge: true }),
         setDoc(doc(db, 'whatsapp_backups', manualBackupId), {
@@ -1110,8 +1281,12 @@ export const CorteReporte: React.FC = () => {
                 onClearAll={clearTanks}
                 hasPrevious={prevTanquesAireacion.length > 0 || prevTanquesMovimiento.length > 0}
                 availableTanks={availableTanks}
-                setAvailableTanks={setAvailableTanks}
                 onToggleAvailableTank={toggleAvailableTank}
+                onSelectAllAvailable={selectAllAvailableTanks}
+                onDeselectAllAvailable={deselectAllAvailableTanks}
+                isConfigMode={isConfigMode}
+                setIsConfigMode={setIsConfigMode}
+                onSaveConfig={flushPlantTanks}
                 isAdmin={profile?.role === 'admin'}
               />
             

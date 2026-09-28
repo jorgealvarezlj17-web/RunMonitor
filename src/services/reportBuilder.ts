@@ -82,14 +82,15 @@ export async function buildShiftReportText(options?: {
   const evalEnd = Math.max(targetEnd.getTime(), now.getTime());
 
   // 3. Parallel fetch of required Firestore data
-  const [catSnap, equipSnap, logsSnap, powerSnap, obsDoc, maintDoc, tanksDoc] = await Promise.all([
+  const [catSnap, equipSnap, logsSnap, powerSnap, obsDoc, maintDoc, tanksDoc, plantTanksDoc] = await Promise.all([
     getDocs(query(collection(db, 'categories'), orderBy('order', 'asc'))),
     getDocs(query(collection(db, 'equipment'), orderBy('order', 'asc'))),
     getDocs(query(collection(db, 'logs'), where('action', 'in', ['on', 'off', 'manual']), orderBy('timestamp', 'desc'), limit(400))),
     getDocs(query(collection(db, 'power_events'), orderBy('timestamp', 'desc'), limit(80))),
     getDoc(doc(db, 'config', 'current_shift_observations')).catch(() => null),
     getDoc(doc(db, 'config', 'current_shift_maintenance')).catch(() => null),
-    getDoc(doc(db, 'config', 'current_shift_tanks')).catch(() => null)
+    getDoc(doc(db, 'config', 'current_shift_tanks')).catch(() => null),
+    getDoc(doc(db, 'config', 'plant_tanks')).catch(() => null)
   ]);
 
   // Categories map & ordered list
@@ -398,8 +399,17 @@ export async function buildShiftReportText(options?: {
   // Tanks / Chapaletas
   if (tanksDoc?.exists()) {
     const tanksData = tanksDoc.data();
-    const tanquesAireacion: string[] = tanksData.tanquesAireacion || [];
-    const tanquesMovimiento: string[] = tanksData.tanquesMovimiento || [];
+    const plantTanksData = plantTanksDoc?.exists() ? plantTanksDoc.data() : null;
+    const availableTanks: string[] | null = Array.isArray(plantTanksData?.availableTanks)
+      ? plantTanksData.availableTanks
+      : null;
+
+    const rawAir: string[] = tanksData.tanquesAireacion || [];
+    const rawMov: string[] = tanksData.tanquesMovimiento || [];
+
+    const tanquesAireacion = availableTanks ? rawAir.filter(t => availableTanks.includes(t)) : rawAir;
+    const tanquesMovimiento = availableTanks ? rawMov.filter(t => availableTanks.includes(t)) : rawMov;
+
     if (tanquesAireacion.length > 0 || tanquesMovimiento.length > 0) {
       text += `_ESTADO CHAPALETAS / TANQUES:_\n`;
       if (tanquesAireacion.length > 0) {
