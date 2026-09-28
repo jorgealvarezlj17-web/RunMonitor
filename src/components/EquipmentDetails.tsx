@@ -517,7 +517,13 @@ export const EquipmentDetails: React.FC<{
       const q = query(collection(db, 'logs'), where('equipmentId', '==', equipment.id));
       const snapshot = await getDocs(q);
       const batch = writeBatch(db);
-      snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+      snapshot.docs.forEach((d) => batch.delete(d.ref));
+      batch.update(doc(db, 'equipment', equipment.id), {
+        status: 'off',
+        lastTurnedOn: null,
+        totalUsageTime: 0,
+        lastUpdated: serverTimestamp()
+      });
       // Don't await commit for better offline support
       batch.commit().catch(error => {
         try {
@@ -793,41 +799,72 @@ export const EquipmentDetails: React.FC<{
 
       // Automatic update of operational time and status for manual entries
       if (currentManualAction === 'on' || currentManualAction === 'off') {
+        const getLogMillis = (ts: any): number => {
+          if (!ts) return 0;
+          if (typeof ts.toMillis === 'function') return ts.toMillis();
+          if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+          if (ts instanceof Date) return ts.getTime();
+          if (typeof ts === 'number') return ts;
+          return 0;
+        };
+
+        // Combine existing logs for this equipment with the new manual entry
+        const allEqLogs = [
+          ...logs.filter(l => l.action === 'on' || l.action === 'off').map(l => ({
+            action: l.action,
+            timestamp: l.timestamp
+          })),
+          {
+            action: currentManualAction,
+            timestamp: dateObj
+          }
+        ];
+
+        // Sort chronologically ascending
+        allEqLogs.sort((a, b) => getLogMillis(a.timestamp) - getLogMillis(b.timestamp));
+
+        // Check if there was an active run before the logs
+        const initialTurnedOnMillis = (equipment.status === 'on' && equipment.lastTurnedOn)
+          ? getLogMillis(equipment.lastTurnedOn)
+          : 0;
+
+        let totalCompletedSeconds = 0;
+        let lastOnTime: number | null = null;
+
+        // If the equipment was already on from before without an initial ON log, use initialTurnedOnMillis
+        const hasLeadingOnLog = allEqLogs.length > 0 && allEqLogs[0].action === 'on';
+        if (!hasLeadingOnLog && initialTurnedOnMillis > 0) {
+          lastOnTime = initialTurnedOnMillis;
+        }
+
+        for (const l of allEqLogs) {
+          const t = getLogMillis(l.timestamp);
+          if (l.action === 'on') {
+            if (lastOnTime === null) {
+              lastOnTime = t;
+            }
+          } else if (l.action === 'off') {
+            if (lastOnTime !== null && t >= lastOnTime) {
+              totalCompletedSeconds += Math.floor((t - lastOnTime) / 1000);
+              lastOnTime = null;
+            }
+          }
+        }
+
         const equipmentUpdate: any = {
           lastUpdated: serverTimestamp()
         };
 
-        if (currentManualAction === 'on') {
-          // If turning ON manually:
-          // 1. Calculate duration from manual time to NOW
-          // 2. Add that duration to totalUsageTime
-          // 3. Set status to ON and lastTurnedOn to NOW (starts new count)
-          if (equipment.status === 'off') {
-            const nowMillis = Date.now();
-            const manualMillis = dateObj.getTime();
-            const diffSeconds = Math.max(0, Math.floor((nowMillis - manualMillis) / 1000));
-            
-            equipmentUpdate.status = 'on';
-            equipmentUpdate.lastTurnedOn = serverTimestamp();
-            equipmentUpdate.totalUsageTime = increment(diffSeconds);
-          }
-        } else if (currentManualAction === 'off') {
-          // If turning OFF manually:
-          // 1. Calculate duration from lastTurnedOn to manual time
-          // 2. Add that duration to totalUsageTime
-          // 3. Set status to OFF and lastTurnedOn to null
-          if (equipment.status === 'on' && equipment.lastTurnedOn) {
-            const manualMillis = dateObj.getTime();
-            const startTimeMillis = equipment.lastTurnedOn.toMillis 
-              ? equipment.lastTurnedOn.toMillis() 
-              : (equipment.lastTurnedOn.seconds ? equipment.lastTurnedOn.seconds * 1000 : Date.now());
-            
-            const diffSeconds = Math.max(0, Math.floor((manualMillis - startTimeMillis) / 1000));
-            
-            equipmentUpdate.status = 'off';
-            equipmentUpdate.lastTurnedOn = null;
-            equipmentUpdate.totalUsageTime = increment(diffSeconds);
-            equipmentUpdate.lastOffReason = currentManualNote || null;
+        if (lastOnTime !== null) {
+          equipmentUpdate.status = 'on';
+          equipmentUpdate.lastTurnedOn = Timestamp.fromMillis(lastOnTime);
+          equipmentUpdate.totalUsageTime = totalCompletedSeconds;
+        } else {
+          equipmentUpdate.status = 'off';
+          equipmentUpdate.lastTurnedOn = null;
+          equipmentUpdate.totalUsageTime = totalCompletedSeconds;
+          if (currentManualAction === 'off' && currentManualNote) {
+            equipmentUpdate.lastOffReason = currentManualNote;
           }
         }
 
@@ -1069,8 +1106,62 @@ export const EquipmentDetails: React.FC<{
   const deleteLog = async (logId: string) => {
     if (isReadOnly) return;
     try {
-      // Don't await for better offline support
-      deleteDoc(doc(db, 'logs', logId)).catch(error => {
+      const getLogMillis = (ts: any): number => {
+        if (!ts) return 0;
+        if (typeof ts.toMillis === 'function') return ts.toMillis();
+        if (typeof ts.seconds === 'number') return ts.seconds * 1000;
+        if (ts instanceof Date) return ts.getTime();
+        if (typeof ts === 'number') return ts;
+        return 0;
+      };
+
+      // Remaining logs excluding the deleted one
+      const remainingLogs = logs
+        .filter(l => l.id !== logId && (l.action === 'on' || l.action === 'off'))
+        .map(l => ({ action: l.action, timestamp: l.timestamp }));
+
+      // Sort chronologically ascending
+      remainingLogs.sort((a, b) => getLogMillis(a.timestamp) - getLogMillis(b.timestamp));
+
+      let totalCompletedSeconds = 0;
+      let lastOnTime: number | null = null;
+
+      for (const l of remainingLogs) {
+        const t = getLogMillis(l.timestamp);
+        if (l.action === 'on') {
+          if (lastOnTime === null) {
+            lastOnTime = t;
+          }
+        } else if (l.action === 'off') {
+          if (lastOnTime !== null && t >= lastOnTime) {
+            totalCompletedSeconds += Math.floor((t - lastOnTime) / 1000);
+            lastOnTime = null;
+          }
+        }
+      }
+
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'logs', logId));
+
+      const eqRef = doc(db, 'equipment', equipment.id);
+      if (lastOnTime !== null) {
+        batch.update(eqRef, {
+          status: 'on',
+          lastTurnedOn: Timestamp.fromMillis(lastOnTime),
+          totalUsageTime: totalCompletedSeconds,
+          lastUpdated: serverTimestamp()
+        });
+      } else {
+        batch.update(eqRef, {
+          status: 'off',
+          lastTurnedOn: null,
+          totalUsageTime: totalCompletedSeconds,
+          lastUpdated: serverTimestamp()
+        });
+      }
+
+      // Commit batch
+      batch.commit().catch(error => {
         try {
           handleFirestoreError(error, OperationType.DELETE, `logs/${logId}`);
         } catch (e) {}

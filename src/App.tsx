@@ -14,6 +14,7 @@ import { PanelRegistro } from './components/PanelRegistro';
 import { StatsPanel } from './components/StatsPanel';
 import Settings from './components/Settings';
 import { TeamPanel } from './components/TeamPanel';
+import { BackupsPanel } from './components/BackupsPanel';
 import { UpdateBanner } from './components/UpdateBanner';
 import { UpdatePauseButton } from './components/UpdatePauseButton';
 import { Activity, ShieldCheck, Menu, X, Zap, FileText, Loader2, User as UserIcon } from 'lucide-react';
@@ -55,7 +56,7 @@ export default function App() {
 
   useEffect(() => {
     if (profile && profile.role !== 'admin') {
-      if (activeTab === 'stats' || activeTab === 'settings' || activeTab === 'team') {
+      if (activeTab === 'stats' || activeTab === 'settings' || activeTab === 'team' || activeTab === 'backups') {
         setActiveTab('dashboard');
       }
     }
@@ -434,6 +435,16 @@ export default function App() {
                       transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     >
                       <TeamPanel />
+                    </motion.div>
+                  ) : activeTab === 'backups' && profile?.role === 'admin' ? (
+                    <motion.div
+                      key="backups"
+                      initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -20, scale: 0.98 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    >
+                      <BackupsPanel />
                     </motion.div>
                   ) : activeTab === 'settings' && profile?.role === 'admin' ? (
                     <motion.div

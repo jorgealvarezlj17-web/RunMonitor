@@ -129,40 +129,74 @@ async function startServer() {
     }
   }
 
-  // Helper function to send Telegram messages safely with fallback for Markdown parse errors (HTTP 400)
+  function escapeTelegramHtml(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  function formatMessageForTelegram(message: string): { htmlText: string; plainText: string } {
+    if (!message) return { htmlText: '', plainText: '' };
+
+    // 1. Shorten horizontal line dividers (12 or more continuous line chars) to 12 chars
+    // so they never wrap or protrude onto a second line in Telegram mobile chat bubbles
+    const adapted = message.replace(/[━─—–]{12,}/g, '━━━━━━━━━━━━');
+
+    let html = escapeTelegramHtml(adapted);
+
+    // 2. Bold: *text* -> <b>text</b>
+    html = html.replace(/\*([^\*\n]+)\*/g, '<b>$1</b>');
+
+    // 3. Whole-line italics: _text_ -> <i>text</i> (handles lines starting and ending with _, including categories like _ÁREA: SUB_ESTACION #2_)
+    html = html.replace(/^_(.+?)_$/gm, '<i>$1</i>');
+
+    // 4. Inline italics: _text_ -> <i>text</i>
+    html = html.replace(/(^|\s)_([^\n]+?)_(\s|[.,;:!?]|$)/g, '$1<i>$2</i>$3');
+
+    // 5. Code: `code` -> <code>code</code>
+    html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+    return { htmlText: html, plainText: adapted };
+  }
+
+  function convertToTelegramHtml(text: string): string {
+    return formatMessageForTelegram(text).htmlText;
+  }
+
+  // Helper function to send Telegram messages safely with HTML mode (prevents HTTP 400 entity errors)
   async function sendTelegramMessageServer(botToken: string, chatId: string, message: string): Promise<boolean> {
     const token = String(botToken || '').trim();
     const cId = String(chatId || '').trim();
     if (!token || !cId) return false;
 
     const tUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+    const { htmlText, plainText } = formatMessageForTelegram(message);
 
-    // 1. Try Markdown mode
+    // 1. Try HTML mode
     try {
       const response = await axios.post(tUrl, {
         chat_id: cId,
-        text: message,
-        parse_mode: 'Markdown'
+        text: htmlText,
+        parse_mode: 'HTML'
       }, { timeout: 15000 });
       if (response.data?.ok) return true;
     } catch (e: any) {
-      const errDetail = e.response?.data ? JSON.stringify(e.response.data) : e.message;
-      console.warn(`[Telegram] Markdown send failed (${errDetail}), retrying plain text...`);
+      // Silent catch, retry plain text without logging noisy warning
     }
 
-    // 2. Retry plain text mode (handles status 400 when Markdown entity parsing fails)
+    // 2. Retry plain text mode (handles any edge case fallback)
     try {
       const response = await axios.post(tUrl, {
         chat_id: cId,
-        text: message
+        text: plainText
       }, { timeout: 15000 });
       if (response.data?.ok) {
-        console.log("[Telegram] Plain text fallback send succeeded");
         return true;
       }
     } catch (e2: any) {
-      const errDetail2 = e2.response?.data ? JSON.stringify(e2.response.data) : e2.message;
-      console.error(`[Telegram] Plain text fallback error in server: ${errDetail2}`);
+      console.info("[Telegram] Plain text fallback response:", e2.response?.data?.description || e2.message);
     }
 
     return false;

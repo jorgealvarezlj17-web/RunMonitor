@@ -123,6 +123,23 @@ export default async function handler(req, res) {
       ]);
     };
 
+function escapeTelegramHtml(text) {
+  if (!text) return '';
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function convertToTelegramHtml(text) {
+  if (!text) return '';
+  let html = escapeTelegramHtml(text);
+  html = html.replace(/\*([^\*\n]+)\*/g, '<b>$1</b>');
+  html = html.replace(/(^|\s)_([^_\n]+)_(\s|$)/g, '$1<i>$2</i>$3');
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  return html;
+}
+
     let telegramPromise = Promise.resolve();
 
     try {
@@ -132,16 +149,17 @@ export default async function handler(req, res) {
           const telegramUrl = `https://api.telegram.org/bot${tToken}/sendMessage`;
           
           telegramPromise = (async () => {
+              const htmlText = convertToTelegramHtml(reportText);
               try {
                   const r = await fetch(telegramUrl, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ chat_id: tChatId, text: reportText, parse_mode: 'Markdown' })
+                      body: JSON.stringify({ chat_id: tChatId, text: htmlText, parse_mode: 'HTML' })
                   });
                   const d = await r.json().catch(() => ({}));
-                  if (r.ok && d.ok) { sendSuccess = true; console.log("Telegram OK"); return; }
+                  if (r.ok && d.ok) { sendSuccess = true; console.log("Telegram HTML OK"); return; }
               } catch (e) {
-                  console.warn("Telegram Markdown send failed:", e);
+                  // Fallback
               }
               try {
                   const r2 = await fetch(telegramUrl, {
@@ -151,9 +169,9 @@ export default async function handler(req, res) {
                   });
                   const d2 = await r2.json().catch(() => ({}));
                   if (r2.ok && d2.ok) { sendSuccess = true; console.log("Telegram plain text fallback OK"); }
-                  else { console.error("Telegram fallback error:", d2); }
+                  else { console.info("Telegram fallback info:", d2?.description || d2); }
               } catch (e2) {
-                  console.error("Telegram fallback error:", e2);
+                  console.info("Telegram fallback info:", e2.message);
               }
           })();
       }

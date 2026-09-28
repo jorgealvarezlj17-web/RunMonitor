@@ -5,6 +5,7 @@ import {
   query, 
   orderBy, 
   limit,
+  where,
   doc, 
   getDoc
 } from 'firebase/firestore';
@@ -61,6 +62,13 @@ export const PanelRegistro: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [powerEvents, setPowerEvents] = useState<PowerEvent[]>([]);
   const [shiftStartTime, setShiftStartTime] = useState('18:00');
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
+
+  // Live timer tick every 10 seconds to update running equipment runtime in real time
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Helper safely convert Firestore timestamp/Date
   const safeToDate = (ts: any): Date => {
@@ -124,7 +132,12 @@ export const PanelRegistro: React.FC = () => {
 
   // 4. Real-time Shift Logs & Power Events listeners (optimized to recent shift items)
   useEffect(() => {
-    const qLogs = query(collection(db, 'logs'), orderBy('timestamp', 'desc'), limit(200));
+    const qLogs = query(
+      collection(db, 'logs'), 
+      where('action', 'in', ['on', 'off', 'manual']), 
+      orderBy('timestamp', 'desc'), 
+      limit(300)
+    );
     const unsubLogs = onSnapshot(qLogs, (snapshot) => {
       const items: LogEntry[] = [];
       snapshot.forEach((d) => {
@@ -154,7 +167,7 @@ export const PanelRegistro: React.FC = () => {
 
   // Shift Start/End Calculation
   const getShiftRange = () => {
-    const now = new Date();
+    const now = currentTime;
     const [startHour, startMin] = shiftStartTime.split(':').map(Number);
     
     let start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), startHour, startMin, 0, 0);
@@ -164,10 +177,10 @@ export const PanelRegistro: React.FC = () => {
     
     let end = new Date(start);
     end.setDate(end.getDate() + 1);
-    return { start, end, now };
+    return { start, end };
   };
 
-  const { start: shiftStart, end: shiftEnd, now: currentTime } = getShiftRange();
+  const { start: shiftStart, end: shiftEnd } = getShiftRange();
 
   // Filter logs for current shift
   const shiftLogs = logs.filter(l => {
@@ -290,7 +303,6 @@ export const PanelRegistro: React.FC = () => {
               {/* Rows */}
               <div className="divide-y divide-slate-100">
                 {catEquips.map(eq => {
-                  const isON = eq.status === 'on';
                   const eqLogs = shiftLogs.filter(l => l.equipmentId === eq.id);
                   
                   const onCount = eqLogs.filter(l => l.action === 'on').length;
@@ -326,6 +338,8 @@ export const PanelRegistro: React.FC = () => {
                       totalMs += (evalMs - lastOnTime);
                     }
                   }
+
+                  const isON = eqLogs.length > 0 ? isOnState : (eq.status === 'on' || isOnState);
 
                   const totalMinutes = Math.round(totalMs / 60000);
                   const hrs = Math.floor(totalMinutes / 60);

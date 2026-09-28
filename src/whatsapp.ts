@@ -31,6 +31,42 @@ export async function saveWhatsAppBackupRecord(message: string, recipient: strin
   }
 }
 
+function escapeTelegramHtml(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export function formatMessageForTelegram(message: string): { htmlText: string; plainText: string } {
+  if (!message) return { htmlText: '', plainText: '' };
+
+  // 1. Shorten horizontal line dividers (12 or more continuous line chars) to 12 chars
+  // so they never wrap or protrude onto a second line in Telegram mobile chat bubbles
+  const adapted = message.replace(/[━─—–]{12,}/g, '━━━━━━━━━━━━');
+
+  let html = escapeTelegramHtml(adapted);
+
+  // 2. Bold: *text* -> <b>text</b>
+  html = html.replace(/\*([^\*\n]+)\*/g, '<b>$1</b>');
+
+  // 3. Whole-line italics: _text_ -> <i>text</i> (handles lines starting and ending with _, including categories like _ÁREA: SUB_ESTACION #2_)
+  html = html.replace(/^_(.+?)_$/gm, '<i>$1</i>');
+
+  // 4. Inline italics: _text_ -> <i>text</i>
+  html = html.replace(/(^|\s)_([^\n]+?)_(\s|[.,;:!?]|$)/g, '$1<i>$2</i>$3');
+
+  // 5. Code: `code` -> <code>code</code>
+  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+  return { htmlText: html, plainText: adapted };
+}
+
+export function convertToTelegramHtml(text: string): string {
+  return formatMessageForTelegram(text).htmlText;
+}
+
 export async function sendTelegramHelper(botToken: string, chatId: string, message: string): Promise<{ success: boolean; error?: string }> {
   const token = (botToken || '').trim();
   const cId = (chatId || '').trim();
@@ -38,29 +74,29 @@ export async function sendTelegramHelper(botToken: string, chatId: string, messa
     return { success: false, error: 'Token o Chat ID de Telegram no configurados' };
   }
   const telegramUrl = `https://api.telegram.org/bot${token}/sendMessage`;
+  const { htmlText, plainText } = formatMessageForTelegram(message);
 
-  // 1. First try Markdown mode
+  // 1. First try HTML mode (avoids entity parsing errors on special characters like _ and *)
   try {
     const res = await fetch(telegramUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: cId, text: message, parse_mode: 'Markdown' })
+      body: JSON.stringify({ chat_id: cId, text: htmlText, parse_mode: 'HTML' })
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && data.ok) {
       return { success: true };
     }
-    console.warn("Telegram Markdown format failed, retrying plain text...", data);
   } catch (err: any) {
-    console.warn("Telegram Markdown fetch error:", err);
+    // Silent catch, fallback to plain text
   }
 
-  // 2. Fallback: Retry sending as plain text (fixes HTTP 400 Bad Request on invalid Markdown entities)
+  // 2. Fallback: Retry sending as plain text (using adapted line lengths)
   try {
     const res2 = await fetch(telegramUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: cId, text: message })
+      body: JSON.stringify({ chat_id: cId, text: plainText })
     });
     const data2 = await res2.json().catch(() => ({}));
     if (res2.ok && data2.ok) {

@@ -7,7 +7,8 @@ import {
   ChevronRight,
   Users,
   BarChart3,
-  Activity
+  Activity,
+  Database
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useProfile } from '../context/ProfileContext';
@@ -32,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab, isOpe
     ...(isAdmin ? [
       { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
       { id: 'team', label: 'Panel de Equipo', icon: Users },
+      { id: 'backups', label: 'Respaldos', icon: Database },
       { id: 'settings', label: 'Configuración', icon: Settings },
     ] : []),
   ];

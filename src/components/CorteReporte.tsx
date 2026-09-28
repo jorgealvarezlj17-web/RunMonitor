@@ -507,6 +507,7 @@ export const CorteReporte: React.FC = () => {
 
       // Filter logs in range
       const logs = allLogs.filter(l => {
+        if (l.action !== 'on' && l.action !== 'off' && l.action !== 'manual') return false;
         const d = safeToDate(l.timestamp);
         return d >= start && d <= end;
       });
