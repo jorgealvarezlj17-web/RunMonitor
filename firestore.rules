@@ -54,6 +54,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /config/plant_tanks {
+      allow read, write: if isAuthenticated();
+    }
+
     match /config/app_settings {
       allow read, write: if true;
     }
